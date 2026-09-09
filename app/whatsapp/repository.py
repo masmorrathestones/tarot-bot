@@ -91,13 +91,21 @@ class WhatsAppRepository:
         provider_status: str | None = None,
     ) -> None:
         existing = db.scalar(
-            select(WhatsAppOutboundMessageEntity.id)
+            select(WhatsAppOutboundMessageEntity)
             .where(
                 WhatsAppOutboundMessageEntity.whatsapp_message_id
                 == whatsapp_message_id
             )
         )
+
         if existing is not None:
+            # A delivery-status webhook can beat this insert. Reconcile the
+            # placeholder instead of discarding the original message content.
+            existing.to_number = to_number
+            existing.text_body = text_body
+            if not existing.provider_status:
+                existing.provider_status = provider_status
+            db.commit()
             return
 
         db.add(
@@ -113,6 +121,17 @@ class WhatsAppRepository:
             db.commit()
         except IntegrityError:
             db.rollback()
+            existing = db.scalar(
+                select(WhatsAppOutboundMessageEntity)
+                .where(
+                    WhatsAppOutboundMessageEntity.whatsapp_message_id
+                    == whatsapp_message_id
+                )
+            )
+            if existing is not None:
+                existing.to_number = to_number
+                existing.text_body = text_body
+                db.commit()
 
     def update_outbound_status(
         self,
@@ -134,8 +153,6 @@ class WhatsAppRepository:
         )
 
         if outbound is None:
-            # Status webhooks can race the response persistence. Keep the event
-            # observable even if we have no local message body yet.
             outbound = WhatsAppOutboundMessageEntity(
                 whatsapp_message_id=whatsapp_message_id,
                 to_number=recipient_id or "unknown",
