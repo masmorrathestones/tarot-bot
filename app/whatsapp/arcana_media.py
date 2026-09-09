@@ -1,9 +1,15 @@
+import os
+from pathlib import Path
 from urllib.parse import quote
 
+import httpx
 
-# Rider-Waite-Smith major arcana images. The user's symbolic numbering keeps
-# Justice as 8 and Strength as 11, so image selection is keyed by the
-# application arcana number rather than the RWS printed number.
+
+ARCANA_ASSET_DIR = Path(__file__).resolve().parents[1] / "assets" / "arcana"
+
+# Rider-Waite-Smith major arcana images. The symbolic numbering used by the
+# application keeps Justice as 8 and Strength as 11, so the mapping is by the
+# application's arcana number rather than the number printed on the RWS card.
 _ARCANA_FILES = {
     1: "RWS Tarot 01 Magician.jpg",
     2: "RWS Tarot 02 High Priestess.jpg",
@@ -30,9 +36,37 @@ _ARCANA_FILES = {
 }
 
 
-def arcana_image_url(arcana_number: int) -> str:
+def source_arcana_url(arcana_number: int) -> str:
     filename = _ARCANA_FILES[arcana_number]
     return (
         "https://commons.wikimedia.org/wiki/Special:Redirect/file/"
         f"{quote(filename)}?width=700"
     )
+
+
+def arcana_image_url(arcana_number: int) -> str:
+    base_url = os.getenv(
+        "PUBLIC_BASE_URL",
+        "https://tarot-bot-c1fv.onrender.com",
+    ).rstrip("/")
+    return f"{base_url}/api/assets/arcana/{arcana_number}"
+
+
+def ensure_arcana_asset(arcana_number: int) -> Path:
+    if arcana_number not in _ARCANA_FILES:
+        raise ValueError("Invalid major arcana number.")
+
+    ARCANA_ASSET_DIR.mkdir(parents=True, exist_ok=True)
+    target = ARCANA_ASSET_DIR / f"{arcana_number:02d}.jpg"
+    if target.exists() and target.stat().st_size > 0:
+        return target
+
+    with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+        response = client.get(source_arcana_url(arcana_number))
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "")
+        if "image" not in content_type.lower():
+            raise ValueError("Arcana source did not return an image.")
+        target.write_bytes(response.content)
+
+    return target
