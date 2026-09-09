@@ -197,6 +197,39 @@ class WhatsAppConversationEntity(Base):
     )
 
 
+class TarotPaymentEntity(Base):
+    __tablename__ = "tarot_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("whatsapp_conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(20), nullable=False, default="stripe")
+    provider_session_id: Mapped[str] = mapped_column(
+        String(255), nullable=False, unique=True, index=True
+    )
+    checkout_url: Mapped[str] = mapped_column(Text, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="usd")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="PENDING", index=True
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+        server_default=func.now(), onupdate=func.now()
+    )
+
+
 class WhatsAppMessageEventEntity(Base):
     __tablename__ = "whatsapp_message_events"
 
