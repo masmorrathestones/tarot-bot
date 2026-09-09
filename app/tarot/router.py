@@ -126,8 +126,6 @@ def get_spread(spread_code: str):
     return map_spread(spread)
 
 
-
-
 @router.get(
     "/cards/{card_id}/interpretation",
     response_model=InterpretationKnowledgeResponse
@@ -206,8 +204,6 @@ def get_interpretation_by_code(card_code: str):
     )
 
 
-
-
 @router.post("/read", response_model=TarotReadResponse)
 def create_ai_reading(
     request: TarotReadRequest,
@@ -244,13 +240,7 @@ def create_ai_reading(
         drawn_cards=drawn,
     )
 
-    profile_data = persisted.profile_snapshot
-    profile = UserSymbolicProfile(
-        sun_sign=profile_data.get("sun_sign"),
-        moon_sign=profile_data.get("moon_sign"),
-        rising_sign=profile_data.get("rising_sign"),
-        mbti=profile_data.get("mbti"),
-    )
+    profile = UserSymbolicProfile.from_snapshot(persisted.profile_snapshot)
 
     try:
         interpretation = tarot_interpretation_service.interpret(
@@ -409,13 +399,7 @@ def retry_ai_reading(
             detail="Persisted spread definition is unavailable.",
         )
 
-    profile_data = reading.profile_snapshot
-    profile = UserSymbolicProfile(
-        sun_sign=profile_data.get("sun_sign"),
-        moon_sign=profile_data.get("moon_sign"),
-        rising_sign=profile_data.get("rising_sign"),
-        mbti=profile_data.get("mbti"),
-    )
+    profile = UserSymbolicProfile.from_snapshot(reading.profile_snapshot)
 
     try:
         interpretation = tarot_interpretation_service.interpret(

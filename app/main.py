@@ -6,8 +6,8 @@ from app.whatsapp.webhook import router as whatsapp_router
 
 app = FastAPI(
     title="Tarot Bot API",
-    version="0.6.0",
-    description="API inicial para sorteio estruturado de cartas de Tarot."
+    version="0.7.0",
+    description="API for structured Tarot card draws, symbolic profiles, and AI-assisted readings."
 )
 
 app.include_router(user_router)
@@ -21,7 +21,7 @@ def root():
     return {
         "status": "online",
         "service": "tarot-bot",
-        "version": "0.6.0"
+        "version": "0.7.0"
     }
 
 

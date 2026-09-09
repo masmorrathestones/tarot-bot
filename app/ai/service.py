@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any
 
 from app.ai.prompts import (
     SYSTEM_INSTRUCTIONS,
@@ -15,10 +15,11 @@ from app.tarot.models import DrawnCard, Spread
 
 @dataclass(frozen=True)
 class UserSymbolicProfile:
-    sun_sign: Optional[str] = None
-    moon_sign: Optional[str] = None
-    rising_sign: Optional[str] = None
-    mbti: Optional[str] = None
+    data: dict[str, Any]
+
+    @classmethod
+    def from_snapshot(cls, snapshot: dict | None) -> "UserSymbolicProfile":
+        return cls(data=dict(snapshot or {}))
 
 
 @dataclass(frozen=True)
@@ -113,6 +114,13 @@ class TarotInterpretationService:
             "OPTIONAL USER PROFILE:",
             self._profile_text(profile),
             "",
+            "PROFILE USAGE RULE:",
+            (
+                "Use populated profile information only as secondary symbolic and personal context. "
+                "Do not let astrology, MBTI, numerology, or arcana profile data override the drawn cards, "
+                "and do not treat any profile system as a factual diagnosis or deterministic prediction."
+            ),
+            "",
             "DRAWN CARDS AND KNOWLEDGE:",
         ]
 
@@ -175,17 +183,83 @@ class TarotInterpretationService:
         if profile is None:
             return "None provided."
 
-        values = []
-        if profile.sun_sign:
-            values.append(f"Sun sign: {profile.sun_sign}")
-        if profile.moon_sign:
-            values.append(f"Moon sign: {profile.moon_sign}")
-        if profile.rising_sign:
-            values.append(f"Rising sign: {profile.rising_sign}")
-        if profile.mbti:
-            values.append(f"MBTI: {profile.mbti}")
+        data = profile.data
+        lines: list[str] = []
 
-        return "; ".join(values) if values else "None provided."
+        def add(label: str, key: str) -> None:
+            value = data.get(key)
+            if value is not None and value != "" and value != {} and value != []:
+                lines.append(f"{label}: {value}")
+
+        add("Name", "name")
+        add("Date of birth", "birth_date")
+        add("Birth time", "birth_time")
+        add("Birthplace", "birth_place")
+        add("Birth latitude", "birth_latitude")
+        add("Birth longitude", "birth_longitude")
+        add("Birth timezone", "birth_timezone")
+        add("Zodiac sign", "zodiac_sign")
+        add("Sun sign", "sun_sign")
+        add("Moon sign", "moon_sign")
+        add("Rising sign", "rising_sign")
+        add("MBTI", "mbti")
+        add("Personal number", "personal_number")
+        add("Personal Arcana number", "personal_arcana_number")
+        add("Personal Arcana", "personal_arcana_name")
+        add("Year Arcana number", "year_arcana_number")
+        add("Year Arcana", "year_arcana_name")
+        add("Year Arcana reference year", "year_arcana_reference_year")
+
+        natal_chart = data.get("natal_chart")
+        if isinstance(natal_chart, dict) and natal_chart:
+            lines.append("Natal chart:")
+            calculation = natal_chart.get("calculation")
+            if calculation:
+                lines.append(f"- Calculation: {calculation}")
+            chart_place = natal_chart.get("birth_place")
+            if chart_place:
+                lines.append(f"- Birthplace: {chart_place}")
+            timezone = natal_chart.get("timezone")
+            if timezone:
+                lines.append(f"- Timezone: {timezone}")
+            utc_datetime = natal_chart.get("utc_datetime")
+            if utc_datetime:
+                lines.append(f"- UTC birth datetime: {utc_datetime}")
+
+            positions = natal_chart.get("positions")
+            if isinstance(positions, dict):
+                for body, position in positions.items():
+                    if not isinstance(position, dict):
+                        continue
+                    sign = position.get("sign")
+                    degree = position.get("degree")
+                    longitude = position.get("longitude")
+                    details = []
+                    if sign:
+                        details.append(str(sign))
+                    if degree is not None:
+                        details.append(f"{degree}°")
+                    if longitude is not None:
+                        details.append(f"longitude {longitude}°")
+                    if details:
+                        lines.append(f"- {body}: {' '.join(details)}")
+
+            ascendant = natal_chart.get("ascendant")
+            if isinstance(ascendant, dict):
+                sign = ascendant.get("sign")
+                degree = ascendant.get("degree")
+                longitude = ascendant.get("longitude")
+                details = []
+                if sign:
+                    details.append(str(sign))
+                if degree is not None:
+                    details.append(f"{degree}°")
+                if longitude is not None:
+                    details.append(f"longitude {longitude}°")
+                if details:
+                    lines.append(f"- Ascendant: {' '.join(details)}")
+
+        return "\n".join(lines) if lines else "None provided."
 
     @staticmethod
     def _select_domain_knowledge(*, question: str, knowledge) -> str:

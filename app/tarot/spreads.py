@@ -3,34 +3,34 @@ from app.tarot.models import Spread, SpreadPosition
 
 THREE_CARD_SITUATION = Spread(
     code="THREE_CARD_SITUATION",
-    name="Situação / Obstáculo / Tendência",
+    name="Situation / Obstacle / Tendency",
     description=(
-        "Tiragem de três cartas para compreender o estado atual da questão, "
-        "a principal dinâmica ou obstáculo e a tendência de desenvolvimento."
+        "A three-card spread for understanding the current state of the question, "
+        "the main dynamic or obstacle, and the likely direction of development."
     ),
     positions=(
         SpreadPosition(
             index=1,
             code="CURRENT_SITUATION",
-            name="Situação atual",
-            description="Representa o estado atual e o núcleo da questão apresentada."
+            name="Current situation",
+            description="Represents the current state and the core of the question presented."
         ),
         SpreadPosition(
             index=2,
             code="OBSTACLE_OR_DYNAMIC",
-            name="Obstáculo ou dinâmica",
+            name="Obstacle or dynamic",
             description=(
-                "Representa a principal força, conflito, obstáculo ou dinâmica "
-                "que influencia a situação."
+                "Represents the main force, conflict, obstacle, or dynamic "
+                "influencing the situation."
             )
         ),
         SpreadPosition(
             index=3,
             code="TENDENCY",
-            name="Tendência",
+            name="Tendency",
             description=(
-                "Representa o desdobramento provável da situação caso as "
-                "dinâmicas atuais permaneçam semelhantes."
+                "Represents the likely development of the situation if the "
+                "current dynamics remain similar."
             )
         ),
     ),
@@ -39,27 +39,27 @@ THREE_CARD_SITUATION = Spread(
 
 PAST_PRESENT_FUTURE = Spread(
     code="PAST_PRESENT_FUTURE",
-    name="Passado / Presente / Futuro",
-    description="Tiragem temporal clássica de três cartas.",
+    name="Past / Present / Future",
+    description="A classic three-card temporal spread.",
     positions=(
         SpreadPosition(
             index=1,
             code="PAST",
-            name="Passado",
-            description="Representa influências, causas ou acontecimentos anteriores."
+            name="Past",
+            description="Represents previous influences, causes, or events."
         ),
         SpreadPosition(
             index=2,
             code="PRESENT",
-            name="Presente",
-            description="Representa a condição atual da situação."
+            name="Present",
+            description="Represents the current condition of the situation."
         ),
         SpreadPosition(
             index=3,
             code="FUTURE",
-            name="Futuro",
+            name="Future",
             description=(
-                "Representa uma tendência futura, não uma previsão determinística."
+                "Represents a future tendency, not a deterministic prediction."
             )
         ),
     ),
@@ -68,29 +68,29 @@ PAST_PRESENT_FUTURE = Spread(
 
 SELF_OTHER_RELATIONSHIP = Spread(
     code="SELF_OTHER_RELATIONSHIP",
-    name="Eu / Outra pessoa / Relação",
-    description="Tiragem de três cartas focada em vínculos e relações interpessoais.",
+    name="You / Other person / Relationship",
+    description="A three-card spread focused on bonds and interpersonal relationships.",
     positions=(
         SpreadPosition(
             index=1,
             code="SELF",
-            name="Você",
-            description="Representa a posição, energia ou perspectiva do consulente."
+            name="You",
+            description="Represents the querent's position, energy, or perspective."
         ),
         SpreadPosition(
             index=2,
             code="OTHER",
-            name="Outra pessoa",
+            name="Other person",
             description=(
-                "Representa simbolicamente a posição da outra pessoa na dinâmica, "
-                "sem afirmar conhecer seus pensamentos ou intenções reais."
+                "Symbolically represents the other person's position in the dynamic, "
+                "without claiming knowledge of their actual thoughts or intentions."
             )
         ),
         SpreadPosition(
             index=3,
             code="RELATIONSHIP",
-            name="Relação",
-            description="Representa a dinâmica emergente entre as duas partes."
+            name="Relationship",
+            description="Represents the emerging dynamic between the two sides."
         ),
     ),
 )
