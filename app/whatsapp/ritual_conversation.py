@@ -16,6 +16,7 @@ from app.tarot.ritual import FallenCandidate, ritual_draw_engine
 from app.tarot.service import tarot_draw_service
 from app.users.service import UserNotFoundError, user_service
 from app.whatsapp.conversation import whatsapp_conversation_service as legacy_conversation_service
+from app.whatsapp.i18n import normalize_language, output_language_instruction, t
 from app.whatsapp.repository import whatsapp_repository
 from app.whatsapp.ritual_state import whatsapp_tarot_flow_store
 from app.whatsapp.tarot_media import (
@@ -26,8 +27,9 @@ from app.whatsapp.tarot_media import (
 )
 
 
-TAROT_COMMANDS = {"tarot", "/tarot", "reading", "/reading", "new", "/new"}
-CANCEL_COMMANDS = {"cancel", "/cancel"}
+TAROT_COMMANDS = {"tarot", "/tarot", "reading", "/reading", "leitura", "lectura", "new", "/new"}
+CANCEL_COMMANDS = {"cancel", "/cancel", "cancelar", "/cancelar"}
+SKIP_ANSWERS = {"skip", "pular", "omitir"}
 RITUAL_STATES = {
     "RITUAL_AWAITING_QUESTION",
     "RITUAL_AWAITING_CONTEXT",
@@ -35,6 +37,10 @@ RITUAL_STATES = {
     "RITUAL_AWAITING_FALLEN_CHOICE",
     "RITUAL_ANALYZING",
 }
+
+
+def _pick(language: str, en: str, pt: str, es: str) -> str:
+    return {"en": en, "pt": pt, "es": es}.get(normalize_language(language), en)
 
 
 class RitualWhatsAppConversationService:
@@ -54,7 +60,6 @@ class RitualWhatsAppConversationService:
         except UserNotFoundError:
             user = None
 
-        # Keep onboarding/profile behavior in the existing conversation service.
         if user is None:
             return legacy_conversation_service.handle_text(
                 db=db,
@@ -68,23 +73,19 @@ class RitualWhatsAppConversationService:
             whatsapp_number=from_number,
             user_id=user.id,
         )
+        language = normalize_language(conversation.language)
 
         if conversation.state in RITUAL_STATES and command in CANCEL_COMMANDS:
             self._cancel(db, conversation)
-            return [
-                "The Tarot reading has been canceled.",
-                self._main_menu_text(),
-            ]
+            return [t(language, "tarot_cancelled"), self._main_menu_text(language)]
 
-        # TAROT always starts a fresh reading, including if an older ritual flow
-        # was left incomplete.
         if command in TAROT_COMMANDS:
             whatsapp_tarot_flow_store.clear(db, conversation.id)
             conversation.state = "RITUAL_AWAITING_QUESTION"
             conversation.pending_question = None
             conversation.pending_context = None
             db.commit()
-            return [self._with_cancel("🔮 Tarot reading started. Send the question you want to explore.")]
+            return [self._with_cancel(t(language, "reading_started"), language)]
 
         state = conversation.state
         if state not in RITUAL_STATES:
@@ -97,7 +98,7 @@ class RitualWhatsAppConversationService:
 
         if state == "RITUAL_AWAITING_QUESTION":
             if not clean:
-                return [self._with_cancel("Send the question you want to explore.")]
+                return [self._with_cancel(t(language, "send_question"), language)]
 
             payload = {
                 "question": clean[:500],
@@ -107,16 +108,12 @@ class RitualWhatsAppConversationService:
                 "has_fallen": False,
                 "fallen_candidates": [],
                 "mystic_intuitions": [],
+                "language": language,
             }
             whatsapp_tarot_flow_store.save(db, conversation.id, payload)
             conversation.state = "RITUAL_AWAITING_CONTEXT"
             db.commit()
-            return [
-                self._with_cancel(
-                    "Now add any context that may help with the reading, "
-                    "or reply SKIP if you want to continue with the question alone."
-                )
-            ]
+            return [self._with_cancel(t(language, "context_prompt"), language)]
 
         if state == "RITUAL_AWAITING_CONTEXT":
             payload = whatsapp_tarot_flow_store.get(db, conversation.id)
@@ -124,23 +121,26 @@ class RitualWhatsAppConversationService:
             if not question:
                 conversation.state = "RITUAL_AWAITING_QUESTION"
                 db.commit()
-                return [self._with_cancel("I lost the pending question. Please send it again.")]
+                return [self._with_cancel(_pick(
+                    language,
+                    "I lost the pending question. Please send it again.",
+                    "Perdi a pergunta pendente. Envie-a novamente.",
+                    "Perdí la pregunta pendiente. Envíala de nuevo.",
+                ), language)]
 
-            context = None if command == "skip" else clean[:1000]
+            context = None if command in SKIP_ANSWERS else clean[:1000]
             payload["context"] = context
+            payload["language"] = language
 
             try:
                 spread_code = spread_selection_service.choose_spread(
                     question=question,
                     context=context,
-                    profile_snapshot=self._profile_snapshot(user),
+                    profile_snapshot={**self._profile_snapshot(user), "language": language},
                 )
             except (AIConfigurationError, AIProviderError, SpreadSelectionError):
                 self._cancel(db, conversation)
-                return [
-                    "I couldn't select the most appropriate spread right now. Please try again.",
-                    self._main_menu_text(),
-                ]
+                return [t(language, "select_spread_failed"), self._main_menu_text(language)]
 
             payload["spread_code"] = spread_code
             payload["drawn"] = []
@@ -153,10 +153,7 @@ class RitualWhatsAppConversationService:
             whatsapp_tarot_flow_store.save(db, conversation.id, payload)
             db.commit()
 
-            return [
-                "🃏 Shuffling the deck...",
-                *self._continue_draw(db, user, conversation, payload),
-            ]
+            return [t(language, "shuffling"), *self._continue_draw(db, user, conversation, payload)]
 
         if state == "RITUAL_AWAITING_FALLEN_CHOICE":
             payload = whatsapp_tarot_flow_store.get(db, conversation.id)
@@ -173,12 +170,12 @@ class RitualWhatsAppConversationService:
                 choice = 0
 
             if choice < 1 or choice > len(candidates):
-                return [self._fallen_choice_prompt(len(candidates))]
+                return [self._fallen_choice_prompt(len(candidates), language)]
 
             spread = tarot_draw_service.get_spread(str(payload.get("spread_code") or ""))
             if spread is None:
                 self._cancel(db, conversation)
-                return ["The selected spread is no longer available.", self._main_menu_text()]
+                return [t(language, "spread_unavailable"), self._main_menu_text(language)]
 
             drawn_data = payload.get("drawn") or []
             position_index = len(drawn_data)
@@ -197,29 +194,23 @@ class RitualWhatsAppConversationService:
             whatsapp_tarot_flow_store.save(db, conversation.id, payload)
             db.commit()
 
-            return [
-                self._card_message(drawn),
-                *self._continue_draw(db, user, conversation, payload),
-            ]
+            return [self._card_message(drawn, language), *self._continue_draw(db, user, conversation, payload)]
 
         if state == "RITUAL_DRAWING":
             payload = whatsapp_tarot_flow_store.get(db, conversation.id)
             return self._continue_draw(db, user, conversation, payload)
 
         if state == "RITUAL_ANALYZING":
-            return [
-                self._with_cancel(
-                    "Your cards have already been drawn and the reading is being analyzed."
-                )
-            ]
+            return [self._with_cancel(t(language, "already_analyzing"), language)]
 
-        return [self._main_menu_text()]
+        return [self._main_menu_text(language)]
 
     def _continue_draw(self, db: Session, user, conversation, payload: dict) -> list[str | dict]:
+        language = normalize_language(conversation.language)
         spread = tarot_draw_service.get_spread(str(payload.get("spread_code") or ""))
         if spread is None:
             self._cancel(db, conversation)
-            return ["The selected spread is no longer available.", self._main_menu_text()]
+            return [t(language, "spread_unavailable"), self._main_menu_text(language)]
 
         messages: list[str | dict] = []
         drawn_data = list(payload.get("drawn") or [])
@@ -247,19 +238,14 @@ class RitualWhatsAppConversationService:
                 db.commit()
 
                 count = len(candidates)
-                messages.extend(
-                    [
-                        (
-                            "A few cards slipped out of the deck on their own — almost as if "
-                            "they had chosen themselves."
-                        ),
-                        {
-                            "type": "image",
-                            "url": card_back_image_url(count),
-                            "caption": self._fallen_choice_prompt(count),
-                        },
-                    ]
-                )
+                messages.extend([
+                    t(language, "fallen_intro"),
+                    {
+                        "type": "image",
+                        "url": card_back_image_url(count),
+                        "caption": self._fallen_choice_prompt(count, language),
+                    },
+                ])
                 return messages
 
             drawn = ritual_draw_engine.draw_one(
@@ -270,16 +256,17 @@ class RitualWhatsAppConversationService:
             drawn_data.append(self._serialize_drawn(drawn))
             payload["drawn"] = drawn_data
             whatsapp_tarot_flow_store.save(db, conversation.id, payload)
-            messages.append(self._card_message(drawn))
+            messages.append(self._card_message(drawn, language))
 
         messages.extend(self._finish_draw(db, user, conversation, payload))
         return messages
 
     def _finish_draw(self, db: Session, user, conversation, payload: dict) -> list[str | dict]:
+        language = normalize_language(conversation.language)
         spread = tarot_draw_service.get_spread(str(payload.get("spread_code") or ""))
         if spread is None:
             self._cancel(db, conversation)
-            return ["The selected spread is no longer available.", self._main_menu_text()]
+            return [t(language, "spread_unavailable"), self._main_menu_text(language)]
 
         drawn_cards = self._deserialize_drawn(spread, payload.get("drawn") or [])
         if len(drawn_cards) != len(spread.positions):
@@ -293,6 +280,7 @@ class RitualWhatsAppConversationService:
             context=payload.get("context"),
             allow_reversed=True,
             drawn_cards=drawn_cards,
+            language=language,
         )
 
         intuitions = self._deserialize_intuitions(payload.get("mystic_intuitions") or [])
@@ -303,7 +291,7 @@ class RitualWhatsAppConversationService:
         whatsapp_tarot_flow_store.save(
             db,
             conversation.id,
-            {"analysis_reading_id": reading.id},
+            {"analysis_reading_id": reading.id, "language": language},
         )
         db.commit()
 
@@ -311,13 +299,10 @@ class RitualWhatsAppConversationService:
             {
                 "type": "image",
                 "url": spread_image_url(reading.id),
-                "caption": f"*Reading #{reading.id}* — your complete spread",
+                "caption": t(language, "reading_caption", id=reading.id),
             },
-            "🔍 The cards are being analyzed now...\n\nSend CANCEL if you want to stop this reading.",
-            {
-                "type": "deferred_tarot_analysis",
-                "reading_id": reading.id,
-            },
+            {"type": "analysis_wait", "language": language},
+            {"type": "deferred_tarot_analysis", "reading_id": reading.id},
         ]
 
     def complete_analysis(
@@ -337,6 +322,14 @@ class RitualWhatsAppConversationService:
             )
             return []
 
+        language = normalize_language((reading.profile_snapshot or {}).get("language"))
+        language_instruction = output_language_instruction(language)
+        localized_context = (
+            f"{reading.context}\n\n{language_instruction}"
+            if reading.context
+            else language_instruction
+        )
+
         drawn_cards = reading_persistence_service.reconstruct_drawn_cards(reading)
         profile = UserSymbolicProfile.from_snapshot(reading.profile_snapshot)
         mystic_intuitions = mystic_intuition_store.get(db, reading.id)
@@ -344,7 +337,7 @@ class RitualWhatsAppConversationService:
         try:
             interpretation = tarot_interpretation_service.interpret(
                 question=reading.question,
-                context=reading.context,
+                context=localized_context,
                 spread=spread,
                 drawn_cards=drawn_cards,
                 profile=profile,
@@ -375,10 +368,9 @@ class RitualWhatsAppConversationService:
             whatsapp_number=from_number,
             user_id=user.id,
         )
+        language = normalize_language(conversation.language)
         flow = whatsapp_tarot_flow_store.get(db, conversation.id)
 
-        # CANCEL may have arrived while the model was processing. In that case
-        # the reading can remain persisted, but no late interpretation is sent.
         if (
             conversation.state != "RITUAL_ANALYZING"
             or int(flow.get("analysis_reading_id") or 0) != reading_id
@@ -392,19 +384,19 @@ class RitualWhatsAppConversationService:
         db.commit()
 
         if completed is None:
-            return [
-                (
-                    "Your cards were drawn and saved, but the AI interpretation failed. "
-                    f"Reading ID: {reading_id}."
-                ),
-                self._main_menu_text(),
-            ]
+            failure = _pick(
+                language,
+                f"Your cards were drawn and saved, but the AI interpretation failed. Reading ID: {reading_id}.",
+                f"Suas cartas foram tiradas e salvas, mas a interpretação da IA falhou. ID da leitura: {reading_id}.",
+                f"Tus cartas fueron sacadas y guardadas, pero falló la interpretación de la IA. ID de lectura: {reading_id}.",
+            )
+            return [failure, self._main_menu_text(language)]
 
         return [
-            f"*Overall narrative*\n\n{completed.narrative or ''}",
-            f"*Card-by-card interpretation*\n\n{completed.card_analysis or ''}",
-            f"*Final synthesis*\n\n{completed.synthesis or ''}",
-            self._main_menu_text(),
+            f"*{t(language, 'overall_label')}*\n\n{completed.narrative or ''}",
+            f"*{t(language, 'cards_label')}*\n\n{completed.card_analysis or ''}",
+            f"*{t(language, 'synthesis_label')}*\n\n{completed.synthesis or ''}",
+            self._main_menu_text(language),
         ]
 
     def _cancel(self, db: Session, conversation) -> None:
@@ -442,16 +434,12 @@ class RitualWhatsAppConversationService:
 
     @staticmethod
     def _serialize_drawn(drawn: DrawnCard) -> dict:
-        return {
-            "card_code": drawn.card.code,
-            "orientation": drawn.orientation.value,
-        }
+        return {"card_code": drawn.card.code, "orientation": drawn.orientation.value}
 
     @staticmethod
     def _deserialize_drawn(spread, data: list[dict]) -> list[DrawnCard]:
         result: list[DrawnCard] = []
         cards = {card.code: card for card in tarot_draw_service.list_cards()}
-
         for index, stored in enumerate(data):
             if index >= len(spread.positions):
                 break
@@ -480,7 +468,7 @@ class RitualWhatsAppConversationService:
         return result
 
     @staticmethod
-    def _card_message(drawn: DrawnCard) -> dict:
+    def _card_message(drawn: DrawnCard, language: str) -> dict:
         return {
             "type": "image",
             "url": card_image_url(drawn.card.code, drawn.orientation),
@@ -488,29 +476,22 @@ class RitualWhatsAppConversationService:
                 card=drawn.card,
                 orientation=drawn.orientation,
                 card_number=drawn.position.index,
+                language=language,
             ),
         }
 
     @classmethod
-    def _fallen_choice_prompt(cls, count: int) -> str:
+    def _fallen_choice_prompt(cls, count: int, language: str) -> str:
         options = ", ".join(str(index) for index in range(1, count + 1))
-        return cls._with_cancel(
-            f"Choose one of the cards that fell from the deck. Reply with {options}."
-        )
+        return cls._with_cancel(t(language, "fallen_choice", options=options), language)
 
     @staticmethod
-    def _with_cancel(text: str) -> str:
-        return f"{text}\n\nSend CANCEL at any time to return to the main menu."
+    def _with_cancel(text: str, language: str) -> str:
+        return t(language, "with_cancel", text=text)
 
     @staticmethod
-    def _main_menu_text() -> str:
-        return (
-            "What would you like to do?\n\n"
-            "TAROT — start a Tarot card reading\n"
-            "PROFILE — add or update your personal profile\n"
-            "HELP — show this menu again\n\n"
-            "A Tarot reading only starts after you send TAROT."
-        )
+    def _main_menu_text(language: str = "en") -> str:
+        return t(language, "main_menu")
 
 
 ritual_whatsapp_conversation_service = RitualWhatsAppConversationService()

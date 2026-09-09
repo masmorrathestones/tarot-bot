@@ -177,6 +177,7 @@ class WhatsAppConversationEntity(Base):
         default="AWAITING_QUESTION",
         index=True,
     )
+    language: Mapped[str] = mapped_column(String(5), nullable=False, default="en")
     pending_question: Mapped[Optional[str]] = mapped_column(String(500))
     pending_context: Mapped[Optional[str]] = mapped_column(String(1000))
     created_at: Mapped[datetime] = mapped_column(
