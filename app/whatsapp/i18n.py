@@ -88,6 +88,36 @@ _MESSAGES = {
         "pt": "Agora adicione qualquer contexto que possa ajudar na leitura, ou responda PULAR se quiser continuar apenas com a pergunta.",
         "es": "Ahora añade cualquier contexto que pueda ayudar con la lectura, o responde OMITIR si quieres continuar solo con la pregunta.",
     },
+    "payment_required": {
+        "en": "💳 This Tarot reading costs US$1.00. Pay securely at the link below to continue:\n\n{url}\n\nThe cards will only be drawn after payment is confirmed. The checkout expires in 30 minutes; if it is not paid, the reading is canceled.",
+        "pt": "💳 Esta leitura de Tarô custa US$ 1,00. Pague com segurança pelo link abaixo para continuar:\n\n{url}\n\nAs cartas só serão tiradas após a confirmação do pagamento. O checkout expira em 30 minutos; se não houver pagamento, a leitura será cancelada.",
+        "es": "💳 Esta lectura de Tarot cuesta US$1,00. Paga de forma segura en el enlace para continuar:\n\n{url}\n\nLas cartas solo se sacarán después de confirmar el pago. El checkout vence en 30 minutos; si no se paga, la lectura se cancela.",
+    },
+    "payment_pending": {
+        "en": "Payment is still pending. Complete the US$1.00 checkout to continue your Tarot reading:\n\n{url}",
+        "pt": "O pagamento ainda está pendente. Conclua o checkout de US$ 1,00 para continuar sua leitura de Tarô:\n\n{url}",
+        "es": "El pago sigue pendiente. Completa el checkout de US$1,00 para continuar tu lectura de Tarot:\n\n{url}",
+    },
+    "payment_confirmed": {
+        "en": "✅ Payment confirmed. Your Tarot reading will continue now.",
+        "pt": "✅ Pagamento confirmado. Sua leitura de Tarô vai continuar agora.",
+        "es": "✅ Pago confirmado. Tu lectura de Tarot continuará ahora.",
+    },
+    "payment_expired": {
+        "en": "The payment was not completed in time, so the Tarot reading was canceled. No cards were drawn.",
+        "pt": "O pagamento não foi concluído a tempo, então a leitura de Tarô foi cancelada. Nenhuma carta foi tirada.",
+        "es": "El pago no se completó a tiempo, así que la lectura de Tarot fue cancelada. No se sacó ninguna carta.",
+    },
+    "payment_unavailable": {
+        "en": "I couldn't start the payment right now, so the Tarot operation was canceled. Please try again later.",
+        "pt": "Não consegui iniciar o pagamento agora, então a operação de Tarô foi cancelada. Tente novamente mais tarde.",
+        "es": "No pude iniciar el pago ahora, así que la operación de Tarot fue cancelada. Inténtalo de nuevo más tarde.",
+    },
+    "payment_flow_lost": {
+        "en": "Your payment was confirmed, but the pending Tarot question could not be recovered. Please contact support with your payment receipt.",
+        "pt": "Seu pagamento foi confirmado, mas não foi possível recuperar a pergunta pendente do Tarô. Entre em contato com o suporte com o comprovante de pagamento.",
+        "es": "Tu pago fue confirmado, pero no se pudo recuperar la pregunta pendiente del Tarot. Contacta al soporte con tu comprobante de pago.",
+    },
     "shuffling": {
         "en": "🃏 Shuffling the deck...",
         "pt": "🃏 Embaralhando o baralho...",
