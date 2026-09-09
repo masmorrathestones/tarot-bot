@@ -7,6 +7,12 @@ from sqlalchemy.orm import Session
 from app.ai.provider import AIConfigurationError, AIProviderError
 from app.ai.service import UserSymbolicProfile, tarot_interpretation_service
 from app.ai.spread_selector import SpreadSelectionError, spread_selection_service
+from app.payments.service import (
+    PaymentConfigurationError,
+    PaymentProviderError,
+    tarot_payment_service,
+)
+from app.persistence.models import WhatsAppConversationEntity
 from app.tarot.enums import Orientation
 from app.tarot.models import DrawnCard
 from app.tarot.mystic_intuition import MysticIntuition, draw_mystic_intuitions
@@ -33,6 +39,7 @@ SKIP_ANSWERS = {"skip", "pular", "omitir"}
 RITUAL_STATES = {
     "RITUAL_AWAITING_QUESTION",
     "RITUAL_AWAITING_CONTEXT",
+    "RITUAL_AWAITING_PAYMENT",
     "RITUAL_DRAWING",
     "RITUAL_AWAITING_FALLEN_CHOICE",
     "RITUAL_ANALYZING",
@@ -80,6 +87,11 @@ class RitualWhatsAppConversationService:
             return [t(language, "tarot_cancelled"), self._main_menu_text(language)]
 
         if command in TAROT_COMMANDS:
+            if conversation.state == "RITUAL_AWAITING_PAYMENT":
+                tarot_payment_service.cancel_pending_for_conversation(
+                    db=db,
+                    conversation_id=conversation.id,
+                )
             whatsapp_tarot_flow_store.clear(db, conversation.id)
             conversation.state = "RITUAL_AWAITING_QUESTION"
             conversation.pending_question = None
@@ -133,27 +145,45 @@ class RitualWhatsAppConversationService:
             payload["language"] = language
 
             try:
-                spread_code = spread_selection_service.choose_spread(
-                    question=question,
-                    context=context,
-                    profile_snapshot={**self._profile_snapshot(user), "language": language},
+                payment = tarot_payment_service.create_checkout_session(
+                    db=db,
+                    user_id=user.id,
+                    conversation_id=conversation.id,
+                    language=language,
                 )
-            except (AIConfigurationError, AIProviderError, SpreadSelectionError):
+            except (PaymentConfigurationError, PaymentProviderError):
                 self._cancel(db, conversation)
-                return [t(language, "select_spread_failed"), self._main_menu_text(language)]
+                return [
+                    t(language, "payment_unavailable"),
+                    self._main_menu_text(language),
+                ]
 
-            payload["spread_code"] = spread_code
-            payload["drawn"] = []
-            payload["has_fallen"] = False
-            payload["fallen_candidates"] = []
-            payload["mystic_intuitions"] = [
-                intuition.to_dict() for intuition in draw_mystic_intuitions()
-            ]
-            conversation.state = "RITUAL_DRAWING"
+            payload["payment_id"] = payment.id
+            payload["payment_session_id"] = payment.provider_session_id
+            payload["payment_url"] = payment.checkout_url
+            conversation.state = "RITUAL_AWAITING_PAYMENT"
             whatsapp_tarot_flow_store.save(db, conversation.id, payload)
             db.commit()
 
-            return [t(language, "shuffling"), *self._continue_draw(db, user, conversation, payload)]
+            return [
+                self._with_cancel(
+                    t(language, "payment_required", url=payment.checkout_url),
+                    language,
+                )
+            ]
+
+        if state == "RITUAL_AWAITING_PAYMENT":
+            payload = whatsapp_tarot_flow_store.get(db, conversation.id)
+            payment_url = str(payload.get("payment_url") or "").strip()
+            if not payment_url:
+                self._cancel(db, conversation)
+                return [t(language, "payment_unavailable"), self._main_menu_text(language)]
+            return [
+                self._with_cancel(
+                    t(language, "payment_pending", url=payment_url),
+                    language,
+                )
+            ]
 
         if state == "RITUAL_AWAITING_FALLEN_CHOICE":
             payload = whatsapp_tarot_flow_store.get(db, conversation.id)
@@ -204,6 +234,92 @@ class RitualWhatsAppConversationService:
             return [self._with_cancel(t(language, "already_analyzing"), language)]
 
         return [self._main_menu_text(language)]
+
+    def resume_after_payment(
+        self,
+        *,
+        db: Session,
+        conversation_id: int,
+        provider_session_id: str,
+    ) -> tuple[str | None, list[str | dict]]:
+        conversation = db.get(WhatsAppConversationEntity, conversation_id)
+        if conversation is None or conversation.user_id is None:
+            return None, []
+
+        language = normalize_language(conversation.language)
+        payload = whatsapp_tarot_flow_store.get(db, conversation.id)
+        if (
+            conversation.state != "RITUAL_AWAITING_PAYMENT"
+            or str(payload.get("payment_session_id") or "") != provider_session_id
+        ):
+            return conversation.whatsapp_number, []
+
+        user = user_service.get(db, conversation.user_id)
+        question = str(payload.get("question") or "").strip()
+        if not question:
+            self._cancel(db, conversation)
+            return conversation.whatsapp_number, [
+                t(language, "payment_flow_lost"),
+                self._main_menu_text(language),
+            ]
+
+        context = payload.get("context")
+        try:
+            spread_code = spread_selection_service.choose_spread(
+                question=question,
+                context=context,
+                profile_snapshot={**self._profile_snapshot(user), "language": language},
+            )
+        except (AIConfigurationError, AIProviderError, SpreadSelectionError):
+            # Payment has already succeeded. Fall back to a stable spread instead
+            # of charging the user and abandoning the reading.
+            spread_code = "THREE_CARD_SITUATION"
+
+        payload["spread_code"] = spread_code
+        payload["drawn"] = []
+        payload["has_fallen"] = False
+        payload["fallen_candidates"] = []
+        payload["mystic_intuitions"] = [
+            intuition.to_dict() for intuition in draw_mystic_intuitions()
+        ]
+        payload["payment_status"] = "PAID"
+        conversation.state = "RITUAL_DRAWING"
+        whatsapp_tarot_flow_store.save(db, conversation.id, payload)
+        db.commit()
+
+        return conversation.whatsapp_number, [
+            t(language, "payment_confirmed"),
+            t(language, "shuffling"),
+            *self._continue_draw(db, user, conversation, payload),
+        ]
+
+    def cancel_unpaid_payment(
+        self,
+        *,
+        db: Session,
+        conversation_id: int,
+        provider_session_id: str,
+    ) -> tuple[str | None, list[str | dict]]:
+        conversation = db.get(WhatsAppConversationEntity, conversation_id)
+        if conversation is None:
+            return None, []
+        payload = whatsapp_tarot_flow_store.get(db, conversation.id)
+        if (
+            conversation.state != "RITUAL_AWAITING_PAYMENT"
+            or str(payload.get("payment_session_id") or "") != provider_session_id
+        ):
+            return conversation.whatsapp_number, []
+
+        language = normalize_language(conversation.language)
+        whatsapp_tarot_flow_store.clear(db, conversation.id)
+        conversation.state = "AWAITING_QUESTION"
+        conversation.pending_question = None
+        conversation.pending_context = None
+        db.commit()
+        return conversation.whatsapp_number, [
+            t(language, "payment_expired"),
+            self._main_menu_text(language),
+        ]
 
     def _continue_draw(self, db: Session, user, conversation, payload: dict) -> list[str | dict]:
         language = normalize_language(conversation.language)
@@ -400,6 +516,11 @@ class RitualWhatsAppConversationService:
         ]
 
     def _cancel(self, db: Session, conversation) -> None:
+        if conversation.state == "RITUAL_AWAITING_PAYMENT":
+            tarot_payment_service.cancel_pending_for_conversation(
+                db=db,
+                conversation_id=conversation.id,
+            )
         whatsapp_tarot_flow_store.clear(db, conversation.id)
         conversation.state = "AWAITING_QUESTION"
         conversation.pending_question = None
