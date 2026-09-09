@@ -29,7 +29,7 @@ class WhatsAppRepository:
         if conversation is not None:
             if user_id is not None and conversation.user_id is None:
                 conversation.user_id = user_id
-                if conversation.state == "AWAITING_NAME":
+                if conversation.state in {"AWAITING_NAME", "AWAITING_LANGUAGE"}:
                     conversation.state = "AWAITING_QUESTION"
                 db.commit()
             return conversation, False
@@ -37,7 +37,8 @@ class WhatsAppRepository:
         conversation = WhatsAppConversationEntity(
             user_id=user_id,
             whatsapp_number=number,
-            state="AWAITING_QUESTION" if user_id is not None else "AWAITING_NAME",
+            state="AWAITING_QUESTION" if user_id is not None else "AWAITING_LANGUAGE",
+            language="en",
         )
         db.add(conversation)
         try:
