@@ -30,6 +30,7 @@ class ReadingPersistenceService:
         context: str | None,
         allow_reversed: bool,
         drawn_cards: list[DrawnCard],
+        language: str = "en",
     ) -> ReadingEntity:
         user = user_service.get(db, user_id)
         p = user.profile
@@ -37,6 +38,7 @@ class ReadingPersistenceService:
         snapshot = {
             "name": user.name,
             "whatsapp_number": user.whatsapp_number,
+            "language": language,
             "sun_sign": p.sun_sign if p else None,
             "moon_sign": p.moon_sign if p else None,
             "rising_sign": p.rising_sign if p else None,
