@@ -55,7 +55,8 @@ def zodiac_position(longitude: float) -> dict:
     }
 
 
-def geocode_birth_place(query: str) -> BirthPlace:
+def geocode_birth_place(query: str, language: str = "en") -> BirthPlace:
+    accept_language = {"pt": "pt-BR,pt;q=0.9", "es": "es,es-ES;q=0.9"}.get(language, "en,en-US;q=0.9")
     with httpx.Client(timeout=15.0, follow_redirects=True) as client:
         response = client.get(
             "https://nominatim.openstreetmap.org/search",
@@ -67,7 +68,7 @@ def geocode_birth_place(query: str) -> BirthPlace:
             },
             headers={
                 "User-Agent": "tarot-bot/1.0 (natal-chart geocoder)",
-                "Accept-Language": "en,en-US;q=0.9",
+                "Accept-Language": accept_language,
             },
         )
         response.raise_for_status()
@@ -79,14 +80,9 @@ def geocode_birth_place(query: str) -> BirthPlace:
     result = results[0]
     latitude = float(result["lat"])
     longitude = float(result["lon"])
-    timezone_name = TimezoneFinder().timezone_at(
-        lat=latitude,
-        lng=longitude,
-    )
+    timezone_name = TimezoneFinder().timezone_at(lat=latitude, lng=longitude)
     if not timezone_name:
-        raise BirthTimezoneNotFoundError(
-            "Unable to determine the timezone for that location."
-        )
+        raise BirthTimezoneNotFoundError("Unable to determine the timezone for that location.")
 
     return BirthPlace(
         display_name=str(result.get("display_name") or query),
@@ -146,28 +142,34 @@ def calculate_natal_chart(
     }
 
 
-def format_natal_chart(chart: dict) -> str:
+def format_natal_chart(chart: dict, language: str = "en") -> str:
     positions = chart["positions"]
-    lines = [
-        "✨ Your basic natal chart looks like this:",
-        "",
-    ]
+    body_names = {
+        "en": {"Sun":"Sun","Moon":"Moon","Mercury":"Mercury","Venus":"Venus","Mars":"Mars","Jupiter":"Jupiter","Saturn":"Saturn","Uranus":"Uranus","Neptune":"Neptune","Pluto":"Pluto","Ascendant":"Ascendant"},
+        "pt": {"Sun":"Sol","Moon":"Lua","Mercury":"Mercúrio","Venus":"Vênus","Mars":"Marte","Jupiter":"Júpiter","Saturn":"Saturno","Uranus":"Urano","Neptune":"Netuno","Pluto":"Plutão","Ascendant":"Ascendente"},
+        "es": {"Sun":"Sol","Moon":"Luna","Mercury":"Mercurio","Venus":"Venus","Mars":"Marte","Jupiter":"Júpiter","Saturn":"Saturno","Uranus":"Urano","Neptune":"Neptuno","Pluto":"Plutón","Ascendant":"Ascendente"},
+    }.get(language, {})
+    title = {
+        "pt": "✨ Seu mapa natal básico é este:",
+        "es": "✨ Tu carta natal básica es esta:",
+    }.get(language, "✨ Your basic natal chart looks like this:")
+    footer = {
+        "pt": "Esses dados foram salvos no seu perfil e podem ser usados como contexto simbólico em leituras futuras.",
+        "es": "Estos datos se guardaron en tu perfil y pueden usarse como contexto simbólico en futuras lecturas.",
+    }.get(language, "These details are saved in your profile and can be used as symbolic context in future readings.")
+
+    lines = [title, ""]
     for body in (
         "Sun", "Moon", "Mercury", "Venus", "Mars",
         "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto",
     ):
         position = positions[body]
-        lines.append(
-            f"{body}: {position['sign']} {position['degree']:.2f}°"
-        )
+        lines.append(f"{body_names.get(body, body)}: {position['sign']} {position['degree']:.2f}°")
 
     ascendant = chart["ascendant"]
-    lines.extend(
-        [
-            f"Ascendant: {ascendant['sign']} {ascendant['degree']:.2f}°",
-            "",
-            "These details are saved in your profile and can be used as symbolic "
-            "context in future readings.",
-        ]
-    )
+    lines.extend([
+        f"{body_names.get('Ascendant', 'Ascendant')}: {ascendant['sign']} {ascendant['degree']:.2f}°",
+        "",
+        footer,
+    ])
     return "\n".join(lines)
