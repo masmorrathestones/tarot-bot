@@ -50,13 +50,7 @@ class TarotReadingFlow:
             drawn_cards=drawn,
         )
 
-        profile_data = persisted.profile_snapshot
-        profile = UserSymbolicProfile(
-            sun_sign=profile_data.get("sun_sign"),
-            moon_sign=profile_data.get("moon_sign"),
-            rising_sign=profile_data.get("rising_sign"),
-            mbti=profile_data.get("mbti"),
-        )
+        profile = UserSymbolicProfile.from_snapshot(persisted.profile_snapshot)
 
         try:
             interpretation = tarot_interpretation_service.interpret(
