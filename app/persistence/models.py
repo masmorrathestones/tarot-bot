@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Integer, JSON, String, Text,
+    Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, Time,
     UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -50,6 +50,15 @@ class UserProfileEntity(Base):
     moon_sign: Mapped[Optional[str]] = mapped_column(String(30))
     rising_sign: Mapped[Optional[str]] = mapped_column(String(30))
     mbti: Mapped[Optional[str]] = mapped_column(String(10))
+    birth_date: Mapped[Optional[date]] = mapped_column(Date())
+    birth_time: Mapped[Optional[time]] = mapped_column(Time())
+    zodiac_sign: Mapped[Optional[str]] = mapped_column(String(30))
+    personal_number: Mapped[Optional[int]] = mapped_column(Integer)
+    personal_arcana_number: Mapped[Optional[int]] = mapped_column(Integer)
+    personal_arcana_name: Mapped[Optional[str]] = mapped_column(String(120))
+    year_arcana_number: Mapped[Optional[int]] = mapped_column(Integer)
+    year_arcana_name: Mapped[Optional[str]] = mapped_column(String(120))
+    year_arcana_reference_year: Mapped[Optional[int]] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
         server_default=func.now(), onupdate=func.now()
@@ -148,11 +157,14 @@ class WhatsAppConversationEntity(Base):
     __tablename__ = "whatsapp_conversations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
+    user_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         unique=True,
         index=True,
+    )
+    whatsapp_number: Mapped[str] = mapped_column(
+        String(32), nullable=False, unique=True, index=True
     )
     state: Mapped[str] = mapped_column(
         String(40),
@@ -174,7 +186,7 @@ class WhatsAppConversationEntity(Base):
         onupdate=func.now(),
     )
 
-    user: Mapped["UserEntity"] = relationship(
+    user: Mapped[Optional["UserEntity"]] = relationship(
         back_populates="whatsapp_conversation"
     )
 
