@@ -2,7 +2,7 @@ from datetime import date, datetime, time
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, Time,
+    Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, Time,
     UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -52,6 +52,11 @@ class UserProfileEntity(Base):
     mbti: Mapped[Optional[str]] = mapped_column(String(10))
     birth_date: Mapped[Optional[date]] = mapped_column(Date())
     birth_time: Mapped[Optional[time]] = mapped_column(Time())
+    birth_place: Mapped[Optional[str]] = mapped_column(String(250))
+    birth_latitude: Mapped[Optional[float]] = mapped_column(Float())
+    birth_longitude: Mapped[Optional[float]] = mapped_column(Float())
+    birth_timezone: Mapped[Optional[str]] = mapped_column(String(80))
+    natal_chart: Mapped[Optional[dict]] = mapped_column(JSON)
     zodiac_sign: Mapped[Optional[str]] = mapped_column(String(30))
     personal_number: Mapped[Optional[int]] = mapped_column(Integer)
     personal_arcana_number: Mapped[Optional[int]] = mapped_column(Integer)
