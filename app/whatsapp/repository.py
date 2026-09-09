@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.persistence.models import (
     WhatsAppConversationEntity,
     WhatsAppMessageEventEntity,
+    WhatsAppOutboundMessageEntity,
 )
 
 
@@ -79,6 +80,93 @@ class WhatsAppRepository:
         except IntegrityError:
             db.rollback()
             return False
+
+    def register_outbound_message(
+        self,
+        db: Session,
+        *,
+        whatsapp_message_id: str,
+        to_number: str,
+        text_body: str,
+        provider_status: str | None = None,
+    ) -> None:
+        existing = db.scalar(
+            select(WhatsAppOutboundMessageEntity)
+            .where(
+                WhatsAppOutboundMessageEntity.whatsapp_message_id
+                == whatsapp_message_id
+            )
+        )
+
+        if existing is not None:
+            # A delivery-status webhook can beat this insert. Reconcile the
+            # placeholder instead of discarding the original message content.
+            existing.to_number = to_number
+            existing.text_body = text_body
+            if not existing.provider_status:
+                existing.provider_status = provider_status
+            db.commit()
+            return
+
+        db.add(
+            WhatsAppOutboundMessageEntity(
+                whatsapp_message_id=whatsapp_message_id,
+                to_number=to_number,
+                text_body=text_body,
+                status="ACCEPTED",
+                provider_status=provider_status,
+            )
+        )
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            existing = db.scalar(
+                select(WhatsAppOutboundMessageEntity)
+                .where(
+                    WhatsAppOutboundMessageEntity.whatsapp_message_id
+                    == whatsapp_message_id
+                )
+            )
+            if existing is not None:
+                existing.to_number = to_number
+                existing.text_body = text_body
+                db.commit()
+
+    def update_outbound_status(
+        self,
+        db: Session,
+        *,
+        whatsapp_message_id: str,
+        status: str,
+        recipient_id: str | None,
+        error_code: int | None,
+        error_title: str | None,
+        error_message: str | None,
+    ) -> None:
+        outbound = db.scalar(
+            select(WhatsAppOutboundMessageEntity)
+            .where(
+                WhatsAppOutboundMessageEntity.whatsapp_message_id
+                == whatsapp_message_id
+            )
+        )
+
+        if outbound is None:
+            outbound = WhatsAppOutboundMessageEntity(
+                whatsapp_message_id=whatsapp_message_id,
+                to_number=recipient_id or "unknown",
+                text_body="",
+            )
+            db.add(outbound)
+
+        outbound.status = status.upper()
+        outbound.provider_status = status
+        outbound.error_code = error_code
+        outbound.error_title = error_title
+        outbound.error_message = error_message
+        outbound.status_updated_at = datetime.now(timezone.utc)
+        db.commit()
 
     def mark_event_processed(
         self,

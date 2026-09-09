@@ -30,7 +30,7 @@ class WhatsAppCloudClient:
 
         return settings
 
-    def send_text(self, *, to: str, body: str) -> None:
+    def send_text(self, *, to: str, body: str) -> list[dict]:
         settings = self._settings()
         url = (
             f"https://graph.facebook.com/{settings.graph_version}/"
@@ -42,9 +42,8 @@ class WhatsAppCloudClient:
             "Content-Type": "application/json",
         }
 
-        # Leave headroom below WhatsApp's text-message limit and make long
-        # interpretations readable as multiple messages.
         chunks = self._split_text(body, max_chars=3500)
+        sent_messages = []
 
         with httpx.Client(timeout=30.0) as client:
             for chunk in chunks:
@@ -68,6 +67,24 @@ class WhatsAppCloudClient:
                         "WhatsApp send failed "
                         f"({response.status_code}): {response.text}"
                     )
+
+                payload = response.json()
+                messages = payload.get("messages") or []
+                if not messages or not messages[0].get("id"):
+                    raise WhatsAppProviderError(
+                        "WhatsApp send succeeded but provider returned no message id."
+                    )
+
+                provider_message = messages[0]
+                sent_messages.append(
+                    {
+                        "id": provider_message["id"],
+                        "status": provider_message.get("message_status"),
+                        "body": chunk,
+                    }
+                )
+
+        return sent_messages
 
     @staticmethod
     def _split_text(text: str, *, max_chars: int) -> list[str]:
