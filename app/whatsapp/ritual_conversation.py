@@ -9,6 +9,8 @@ from app.ai.service import UserSymbolicProfile, tarot_interpretation_service
 from app.ai.spread_selector import SpreadSelectionError, spread_selection_service
 from app.tarot.enums import Orientation
 from app.tarot.models import DrawnCard
+from app.tarot.mystic_intuition import MysticIntuition, draw_mystic_intuitions
+from app.tarot.mystic_intuition_store import mystic_intuition_store
 from app.tarot.persistence_service import reading_persistence_service
 from app.tarot.ritual import FallenCandidate, ritual_draw_engine
 from app.tarot.service import tarot_draw_service
@@ -104,6 +106,7 @@ class RitualWhatsAppConversationService:
                 "drawn": [],
                 "has_fallen": False,
                 "fallen_candidates": [],
+                "mystic_intuitions": [],
             }
             whatsapp_tarot_flow_store.save(db, conversation.id, payload)
             conversation.state = "RITUAL_AWAITING_CONTEXT"
@@ -143,6 +146,9 @@ class RitualWhatsAppConversationService:
             payload["drawn"] = []
             payload["has_fallen"] = False
             payload["fallen_candidates"] = []
+            payload["mystic_intuitions"] = [
+                intuition.to_dict() for intuition in draw_mystic_intuitions()
+            ]
             conversation.state = "RITUAL_DRAWING"
             whatsapp_tarot_flow_store.save(db, conversation.id, payload)
             db.commit()
@@ -289,6 +295,10 @@ class RitualWhatsAppConversationService:
             drawn_cards=drawn_cards,
         )
 
+        intuitions = self._deserialize_intuitions(payload.get("mystic_intuitions") or [])
+        if intuitions:
+            mystic_intuition_store.save(db, reading.id, intuitions)
+
         conversation.state = "RITUAL_ANALYZING"
         whatsapp_tarot_flow_store.save(
             db,
@@ -329,6 +339,7 @@ class RitualWhatsAppConversationService:
 
         drawn_cards = reading_persistence_service.reconstruct_drawn_cards(reading)
         profile = UserSymbolicProfile.from_snapshot(reading.profile_snapshot)
+        mystic_intuitions = mystic_intuition_store.get(db, reading.id)
 
         try:
             interpretation = tarot_interpretation_service.interpret(
@@ -337,6 +348,7 @@ class RitualWhatsAppConversationService:
                 spread=spread,
                 drawn_cards=drawn_cards,
                 profile=profile,
+                mystic_intuitions=mystic_intuitions,
             )
             completed = reading_persistence_service.mark_completed(
                 db=db,
@@ -453,6 +465,18 @@ class RitualWhatsAppConversationService:
                     orientation=Orientation(str(stored.get("orientation") or "upright")),
                 )
             )
+        return result
+
+    @staticmethod
+    def _deserialize_intuitions(data: list[dict]) -> list[MysticIntuition]:
+        result: list[MysticIntuition] = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            try:
+                result.append(MysticIntuition.from_dict(item))
+            except (TypeError, ValueError):
+                continue
         return result
 
     @staticmethod
