@@ -13,9 +13,9 @@ MYSTIC_INTUITION_TYPES = (
     "Chaotic Evil",
 )
 
-# Each of the two independent intuition slots has a 1.2% chance to activate.
+# Each of the two independent intuition slots has a 8% chance to activate.
 # Most readings therefore receive no intuition at all.
-INTUITION_CHANCE_BASIS_POINTS = 360
+INTUITION_CHANCE_BASIS_POINTS = 800
 INTUITION_ROLL_SCALE = 10_000
 MAX_INTUITIONS = 2
 
