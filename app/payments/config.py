@@ -9,7 +9,7 @@ class PaymentSettings:
     public_base_url: str
     amount_cents: int = 100
     currency: str = "usd"
-    checkout_expiration_minutes: int = 30
+    checkout_expiration_minutes: int = 31
 
 
 def get_payment_settings() -> PaymentSettings:
