@@ -30,6 +30,7 @@ class Spread:
     name: str
     description: str
     positions: tuple[SpreadPosition, ...]
+    interpretation_instructions: str | None = None
 
 
 @dataclass(frozen=True)

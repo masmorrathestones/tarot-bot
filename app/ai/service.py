@@ -106,6 +106,12 @@ class TarotInterpretationService:
         profile: UserSymbolicProfile | None,
         mystic_intuitions: list[MysticIntuition] | None,
     ) -> str:
+
+        spread_instructions = (
+                spread.interpretation_instructions
+                or "Interpret the cards according to their numbered spread positions."
+        )
+
         parts: list[str] = [
             "USER QUESTION:",
             question,
@@ -114,8 +120,11 @@ class TarotInterpretationService:
             context or "None provided",
             "",
             "SPREAD:",
-            f"{spread.name} ({spread.code})",
-            spread.description,
+            f"Name: {spread.name} ({spread.code})",
+            f"Description: {spread.description}",
+            "",
+            "SPREAD-SPECIFIC INTERPRETATION RULES:",
+            spread_instructions,
             "",
             "OPTIONAL USER PROFILE:",
             self._profile_text(profile),
