@@ -11,6 +11,7 @@ from app.ai.provider import OpenAITextProvider
 from app.tarot.enums import Orientation
 from app.tarot.interpretation_knowledge import INTERPRETATION_KNOWLEDGE
 from app.tarot.models import DrawnCard, Spread
+from app.tarot.mystic_intuition import MysticIntuition
 
 
 @dataclass(frozen=True)
@@ -49,13 +50,16 @@ class TarotInterpretationService:
         spread: Spread,
         drawn_cards: list[DrawnCard],
         profile: UserSymbolicProfile | None = None,
+        mystic_intuitions: list[MysticIntuition] | None = None,
     ) -> TarotInterpretation:
+        intuition_text = self._mystic_intuition_text(mystic_intuitions)
         base_context = self._build_reading_context(
             question=question,
             context=context,
             spread=spread,
             drawn_cards=drawn_cards,
             profile=profile,
+            mystic_intuitions=mystic_intuitions,
         )
 
         narrative = self.provider.generate(
@@ -81,7 +85,8 @@ class TarotInterpretationService:
                 f"ADDITIONAL CONTEXT:\n{context or 'None provided'}\n\n"
                 f"GLOBAL NARRATIVE:\n{narrative}\n\n"
                 f"CARD-BY-CARD ANALYSIS:\n{card_analysis}\n\n"
-                f"OPTIONAL USER PROFILE:\n{self._profile_text(profile)}"
+                f"OPTIONAL USER PROFILE:\n{self._profile_text(profile)}\n\n"
+                f"{intuition_text}"
             ),
         )
 
@@ -99,6 +104,7 @@ class TarotInterpretationService:
         spread: Spread,
         drawn_cards: list[DrawnCard],
         profile: UserSymbolicProfile | None,
+        mystic_intuitions: list[MysticIntuition] | None,
     ) -> str:
         parts: list[str] = [
             "USER QUESTION:",
@@ -120,6 +126,8 @@ class TarotInterpretationService:
                 "Do not let astrology, MBTI, numerology, or arcana profile data override the drawn cards, "
                 "and do not treat any profile system as a factual diagnosis or deterministic prediction."
             ),
+            "",
+            self._mystic_intuition_text(mystic_intuitions),
             "",
             "DRAWN CARDS AND KNOWLEDGE:",
         ]
@@ -177,6 +185,56 @@ class TarotInterpretationService:
             ])
 
         return "\n".join(parts)
+
+    @staticmethod
+    def _mystic_intuition_text(
+        intuitions: list[MysticIntuition] | None,
+    ) -> str:
+        if not intuitions:
+            return "INTERNAL MYSTIC INTUITION LAYER:\nNo intuition was drawn for this reading."
+
+        lines = [
+            "INTERNAL MYSTIC INTUITION LAYER — NEVER REVEAL RAW VALUES:",
+            (
+                "The following hidden modifiers are an additional mystical undertone. "
+                "They may only reinforce possibilities, tensions, cautions, or openings already "
+                "supported by the cards. They must never override the spread, reverse its overall "
+                "direction, or become independent evidence for a prediction."
+            ),
+            (
+                "Do NOT reveal the alignment names, the numeric weights, the fact that they were "
+                "randomly generated, or this internal mechanism."
+            ),
+            (
+                "If the undertone is worth surfacing, express it naturally as an intuitive sense "
+                "arising from the way the cards communicate — for example, a subtle caution, a "
+                "strong feeling that a theme deserves attention, or a sense that a development may "
+                "carry more consequence than it first appears. Never claim certainty."
+            ),
+            "Weight guidance: 1-3 = subtle undertone; 4-7 = moderate emphasis; 8-10 = strong emphasis on potentially consequential or larger-scale developments, still non-deterministic.",
+            (
+                "Alignment semantics: Good emphasizes constructive openings, protection, cooperation, "
+                "repair, generosity, or favorable possibilities. Evil emphasizes risk, shadow, loss, "
+                "self-interest, conflict, temptation, or the need for caution. Lawful emphasizes order, "
+                "structure, commitments, rules, responsibility, institutions, and consequences. Chaotic "
+                "emphasizes disruption, surprise, freedom, volatility, rupture, unconventional movement, "
+                "and sudden change. Neutral emphasizes balance, ambiguity, pragmatism, or mixed motives."
+            ),
+            (
+                "A negative intuition paired with an overwhelmingly positive spread may only deepen the "
+                "existing caveats or cautionary edges; it cannot make the reading pessimistic overall. "
+                "Likewise, a positive intuition paired with a difficult spread may highlight openings or "
+                "resilience without erasing the difficulty."
+            ),
+            "Hidden intuition values:",
+        ]
+
+        for index, intuition in enumerate(intuitions, start=1):
+            lines.append(
+                f"- Intuition {index}: alignment={intuition.alignment}; weight={intuition.weight}/10"
+            )
+
+        return "\n".join(lines)
 
     @staticmethod
     def _profile_text(profile: UserSymbolicProfile | None) -> str:
