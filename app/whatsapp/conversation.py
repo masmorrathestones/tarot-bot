@@ -39,6 +39,10 @@ SPREAD_OPTIONS = {
 
 YES_ANSWERS = {"yes", "y", "sure", "ok", "okay"}
 NO_ANSWERS = {"no", "n", "not now"}
+TAROT_COMMANDS = {"tarot", "/tarot", "reading", "/reading", "new", "/new"}
+PROFILE_COMMANDS = {"profile", "/profile"}
+HELP_COMMANDS = {"help", "/help", "menu", "/menu"}
+CANCEL_COMMANDS = {"cancel", "/cancel"}
 
 
 class WhatsAppConversationService:
@@ -82,7 +86,7 @@ class WhatsAppConversationService:
                 name=clean,
             )
             conversation.user_id = user.id
-            conversation.state = "AWAITING_QUESTION"
+            self._reset_to_menu(conversation)
             db.commit()
 
             first_name = user.name.split()[0]
@@ -92,7 +96,7 @@ class WhatsAppConversationService:
                     "This is a digital cartomancy experience designed to turn Tarot symbols "
                     "into reflection, interpretation, and narrative."
                 ),
-                self._help_text(),
+                self._main_menu_text(),
             ]
 
         if user is None:
@@ -100,24 +104,26 @@ class WhatsAppConversationService:
             db.commit()
             return ["Before we continue, please tell me your name."]
 
-        if command in {"help", "/help"}:
-            return [self._help_text()]
+        # CANCEL is global: it works from every active flow.
+        if command in CANCEL_COMMANDS:
+            self._reset_to_menu(conversation)
+            db.commit()
+            return [
+                "The current action has been canceled.",
+                self._main_menu_text(),
+            ]
 
-        if command in {"cancel", "/cancel"}:
-            conversation.state = "AWAITING_QUESTION"
+        if command in HELP_COMMANDS:
+            return [self._main_menu_text()]
+
+        if command in TAROT_COMMANDS:
+            conversation.state = "AWAITING_READING_QUESTION"
             conversation.pending_question = None
             conversation.pending_context = None
             db.commit()
-            return ["The current flow has been canceled. Send a new question whenever you are ready."]
+            return [self._reading_question_prompt()]
 
-        if command in {"new", "/new", "reading"}:
-            conversation.state = "AWAITING_QUESTION"
-            conversation.pending_question = None
-            conversation.pending_context = None
-            db.commit()
-            return ["Ready for a new reading. Send the question you want to explore."]
-
-        if command in {"profile", "/profile"}:
+        if command in PROFILE_COMMANDS:
             conversation.state = "PROFILE_MENU"
             conversation.pending_question = None
             conversation.pending_context = None
@@ -155,10 +161,9 @@ class WhatsAppConversationService:
                     (
                         "🧠 Let's take a personality test inspired by the MBTI preference model.\n\n"
                         "There are 20 A/B questions. There is no right answer: choose the option "
-                        "that describes you best most of the time.\n\n"
-                        "You can send CANCEL at any time to stop the test."
+                        "that describes you best most of the time."
                     ),
-                    format_question(0),
+                    self._mbti_question(0),
                 ]
 
             return [self._profile_menu_text()]
@@ -171,7 +176,7 @@ class WhatsAppConversationService:
             if command not in {"a", "b", "1", "2"}:
                 return [
                     "For the personality test, reply only with A or B.",
-                    format_question(index),
+                    self._mbti_question(index),
                 ]
 
             scores = score_answer(index, command, scores)
@@ -183,12 +188,11 @@ class WhatsAppConversationService:
                     scores=scores,
                 )
                 db.commit()
-                return [format_question(next_index)]
+                return [self._mbti_question(next_index)]
 
             result = calculate_mbti(scores)
             user.profile.mbti = result
-            conversation.state = "AWAITING_QUESTION"
-            conversation.pending_context = None
+            self._reset_to_menu(conversation)
             db.commit()
 
             return [
@@ -198,18 +202,21 @@ class WhatsAppConversationService:
                     "This result describes preference tendencies rather than a rigid category "
                     "or psychological diagnosis. It has been saved to your profile and can be "
                     "used as context in future readings."
-                )
+                ),
+                self._main_menu_text(),
             ]
 
         if state == "PROFILE_BIRTH_DATE":
             birth_date = self._parse_birth_date(clean)
             if birth_date is None:
                 return [
-                    "I couldn't recognize that date. Send it as DD/MM/YYYY, "
-                    "for example 17/08/2002."
+                    self._with_cancel(
+                        "I couldn't recognize that date. Send it as DD/MM/YYYY, "
+                        "for example 17/08/2002."
+                    )
                 ]
             if birth_date > date.today():
-                return ["Your date of birth cannot be in the future. Please try again."]
+                return [self._with_cancel("Your date of birth cannot be in the future. Please try again.")]
 
             zodiac_sign, zodiac_description = zodiac_for_birth_date(birth_date)
             arcana = calculate_personal_arcana(user.name, birth_date)
@@ -249,7 +256,7 @@ class WhatsAppConversationService:
                     "url": arcana_image_url(arcana.year_arcana_number),
                     "caption": year_caption,
                 },
-                (
+                self._with_cancel(
                     "If you want, I can calculate the rest of your natal chart. "
                     "For that I need your birth time and birthplace.\n\n"
                     "Would you like to provide your birth time now? Reply YES or NO."
@@ -262,19 +269,26 @@ class WhatsAppConversationService:
                 db.commit()
                 return [self._birth_time_prompt()]
             if command in NO_ANSWERS:
-                conversation.state = "AWAITING_QUESTION"
+                self._reset_to_menu(conversation)
                 db.commit()
                 return [
-                    "No problem. Use the PROFILE command whenever you want to complete your natal chart."
+                    "No problem. Use PROFILE whenever you want to complete your natal chart.",
+                    self._main_menu_text(),
                 ]
-            return ["Reply YES to calculate your natal chart now, or NO to leave it for later."]
+            return [
+                self._with_cancel(
+                    "Reply YES to calculate your natal chart now, or NO to leave it for later."
+                )
+            ]
 
         if state == "PROFILE_BIRTH_TIME":
             birth_time = self._parse_birth_time(clean)
             if birth_time is None:
                 return [
-                    "I couldn't recognize that time. Send it as HH:MM, "
-                    "for example 14:35."
+                    self._with_cancel(
+                        "I couldn't recognize that time. Send it as HH:MM, "
+                        "for example 14:35."
+                    )
                 ]
             if user.profile.birth_date is None:
                 conversation.state = "PROFILE_BIRTH_DATE"
@@ -288,10 +302,12 @@ class WhatsAppConversationService:
             conversation.state = "PROFILE_BIRTH_PLACE"
             db.commit()
             return [
-                f"Birth time saved: {birth_time.strftime('%H:%M')}.\n\n"
-                "Now tell me where you were born. Send the city, state/region, and country, "
-                "for example: Belo Horizonte, Minas Gerais, Brazil.\n\n"
-                "The location is needed to determine the timezone and Ascendant."
+                self._with_cancel(
+                    f"Birth time saved: {birth_time.strftime('%H:%M')}.\n\n"
+                    "Now tell me where you were born. Send the city, state/region, and country, "
+                    "for example: Belo Horizonte, Minas Gerais, Brazil.\n\n"
+                    "The location is needed to determine the timezone and Ascendant."
+                )
             ]
 
         if state == "PROFILE_BIRTH_PLACE":
@@ -304,13 +320,17 @@ class WhatsAppConversationService:
                 )
             except (BirthPlaceNotFoundError, BirthTimezoneNotFoundError):
                 return [
-                    "I couldn't locate that place reliably. "
-                    "Try sending it as city, state/region, and country."
+                    self._with_cancel(
+                        "I couldn't locate that place reliably. "
+                        "Try sending it as city, state/region, and country."
+                    )
                 ]
             except (httpx.HTTPError, ValueError):
                 return [
-                    "I couldn't calculate the natal chart because the location lookup failed. "
-                    "Please try again in a few moments."
+                    self._with_cancel(
+                        "I couldn't calculate the natal chart because the location lookup failed. "
+                        "Please try again in a few moments."
+                    )
                 ]
 
             user.profile.birth_place = birth_place.display_name[:250]
@@ -321,7 +341,7 @@ class WhatsAppConversationService:
             user.profile.sun_sign = chart["positions"]["Sun"]["sign"]
             user.profile.moon_sign = chart["positions"]["Moon"]["sign"]
             user.profile.rising_sign = chart["ascendant"]["sign"]
-            conversation.state = "AWAITING_QUESTION"
+            self._reset_to_menu(conversation)
             db.commit()
 
             return [
@@ -330,7 +350,17 @@ class WhatsAppConversationService:
                     f"Timezone used for the calculation: {birth_place.timezone}."
                 ),
                 format_natal_chart(chart),
+                self._main_menu_text(),
             ]
+
+        if state == "AWAITING_READING_QUESTION":
+            if not clean:
+                return [self._reading_question_prompt()]
+            conversation.pending_question = clean[:500]
+            conversation.pending_context = None
+            conversation.state = "AWAITING_CONTEXT"
+            db.commit()
+            return [self._context_prompt()]
 
         if state == "AWAITING_CONTEXT":
             conversation.pending_context = None if command == "skip" else clean[:1000]
@@ -345,14 +375,15 @@ class WhatsAppConversationService:
 
             question = conversation.pending_question
             if not question:
-                conversation.state = "AWAITING_QUESTION"
+                conversation.state = "AWAITING_READING_QUESTION"
                 db.commit()
-                return ["I lost the pending question. Please send your question again."]
+                return [
+                    "I lost the pending question.",
+                    self._reading_question_prompt(),
+                ]
 
             context = conversation.pending_context
-            conversation.state = "AWAITING_QUESTION"
-            conversation.pending_question = None
-            conversation.pending_context = None
+            self._reset_to_menu(conversation)
             db.commit()
 
             try:
@@ -368,21 +399,36 @@ class WhatsAppConversationService:
                 return [
                     "Your cards were drawn and saved, but the AI interpretation failed. "
                     "This reading can be retried without drawing new cards. "
-                    f"Reading ID: {self._latest_failed_reading_id(db, user.id)}"
+                    f"Reading ID: {self._latest_failed_reading_id(db, user.id)}",
+                    self._main_menu_text(),
                 ]
             except InvalidSpreadError:
-                return ["That spread is currently unavailable. Please send your question again."]
+                return [
+                    "That spread is currently unavailable.",
+                    self._main_menu_text(),
+                ]
 
-            return self._format_reading(reading)
+            return [*self._format_reading(reading), self._main_menu_text()]
 
-        conversation.pending_question = clean[:500]
-        conversation.pending_context = None
-        conversation.state = "AWAITING_CONTEXT"
+        # Idle/default behavior: arbitrary text never starts a Tarot reading.
+        # It simply shows the available actions.
+        self._reset_to_menu(conversation)
         db.commit()
-        return [
-            "Got it. Now add any context that may help with the reading, "
-            "or reply SKIP if you want to continue with the question alone."
-        ]
+        return [self._main_menu_text()]
+
+    @staticmethod
+    def _reset_to_menu(conversation) -> None:
+        conversation.state = "AWAITING_QUESTION"
+        conversation.pending_question = None
+        conversation.pending_context = None
+
+    @staticmethod
+    def _with_cancel(text: str) -> str:
+        return f"{text}\n\nSend CANCEL at any time to return to the main menu."
+
+    @classmethod
+    def _mbti_question(cls, index: int) -> str:
+        return cls._with_cancel(format_question(index))
 
     @staticmethod
     def _encode_mbti_progress(*, index: int, scores: dict[str, int]) -> str:
@@ -429,33 +475,46 @@ class WhatsAppConversationService:
         valid_codes = set(SPREAD_OPTIONS.values())
         return value if value in valid_codes else None
 
-    @staticmethod
-    def _birth_date_prompt() -> str:
-        return (
+    @classmethod
+    def _reading_question_prompt(cls) -> str:
+        return cls._with_cancel(
+            "🔮 Tarot reading started. Send the question you want to explore."
+        )
+
+    @classmethod
+    def _context_prompt(cls) -> str:
+        return cls._with_cancel(
+            "Now add any context that may help with the reading, "
+            "or reply SKIP if you want to continue with the question alone."
+        )
+
+    @classmethod
+    def _birth_date_prompt(cls) -> str:
+        return cls._with_cancel(
             "What is your date of birth? Send it as DD/MM/YYYY. "
             "Example: 17/08/2002."
         )
 
-    @staticmethod
-    def _birth_time_prompt() -> str:
-        return (
+    @classmethod
+    def _birth_time_prompt(cls) -> str:
+        return cls._with_cancel(
             "What is your birth time? Send it as HH:MM. "
             "Example: 14:35."
         )
 
-    @staticmethod
-    def _profile_menu_text() -> str:
-        return (
-            "You can add the following information to your profile:\n\n"
+    @classmethod
+    def _profile_menu_text(cls) -> str:
+        return cls._with_cancel(
+            "You can add or update the following profile information:\n\n"
             "1 — Date of birth\n"
             "2 — Birth time and natal chart\n"
             "3 — Personality test (MBTI)\n\n"
-            "Send the number of the information you want to add or update."
+            "Send 1, 2, or 3."
         )
 
-    @staticmethod
-    def _spread_prompt() -> str:
-        return (
+    @classmethod
+    def _spread_prompt(cls) -> str:
+        return cls._with_cancel(
             "Choose a spread:\n"
             "1 — Current situation / Dynamic / Tendency\n"
             "2 — Past / Present / Future\n"
@@ -464,14 +523,13 @@ class WhatsAppConversationService:
         )
 
     @staticmethod
-    def _help_text() -> str:
+    def _main_menu_text() -> str:
         return (
-            "Available commands:\n\n"
-            "PROFILE — add or update personal information\n"
-            "NEW — start a new reading\n"
-            "CANCEL — cancel the current flow\n"
-            "HELP — show these commands\n\n"
-            "To start a reading, simply send your question."
+            "What would you like to do?\n\n"
+            "TAROT — start a Tarot card reading\n"
+            "PROFILE — add or update your personal profile\n"
+            "HELP — show this menu again\n\n"
+            "A Tarot reading only starts after you send TAROT."
         )
 
     @staticmethod
@@ -502,7 +560,7 @@ class WhatsAppConversationService:
             f"Overall narrative\n\n{reading.narrative or ''}",
             f"Card-by-card interpretation\n\n{reading.card_analysis or ''}",
             f"Final synthesis\n\n{reading.synthesis or ''}",
-            "Your reading has been saved. Send another question whenever you want to start a new one.",
+            "Your reading has been saved.",
         ]
 
 
