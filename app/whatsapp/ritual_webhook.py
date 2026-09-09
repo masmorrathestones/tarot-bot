@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database.session import SessionLocal, get_db
 from app.whatsapp.config import get_whatsapp_settings
+from app.whatsapp.i18n import normalize_language, t
 from app.whatsapp.repository import whatsapp_repository
 from app.whatsapp.ritual_conversation import ritual_whatsapp_conversation_service
 from app.whatsapp.schemas import TestWhatsAppMessageRequest, TestWhatsAppMessageResponse
@@ -25,10 +26,6 @@ AFTER_LAST_CARD_BEFORE_ANALYSIS_SECONDS = 9.0
 AFTER_OVERALL_NARRATIVE_SECONDS = 7.0
 FINAL_SYNTHESIS_DELAY_SECONDS = 12.0
 NARRATIVE_CAPTION_MAX_CHARS = 700
-WAIT_FOR_ANALYSIS_MESSAGE = (
-    "🔍 I'm analyzing the complete spread now. Please wait while I finish the full reading.\n\n"
-    "Send CANCEL if you want to stop this reading."
-)
 
 
 @router.get("/webhook", response_class=PlainTextResponse)
@@ -61,11 +58,7 @@ async def receive_webhook(
 
     if settings.app_secret:
         signature = request.headers.get("X-Hub-Signature-256")
-        if not _valid_signature(
-            raw_body=raw_body,
-            signature=signature,
-            app_secret=settings.app_secret,
-        ):
+        if not _valid_signature(raw_body=raw_body, signature=signature, app_secret=settings.app_secret):
             raise HTTPException(status_code=401, detail="Invalid webhook signature.")
 
     try:
@@ -112,8 +105,6 @@ def simulate_text_message(
         text=request.text,
     )
 
-    # The simulator preserves production ordering but intentionally does not
-    # sleep between messages.
     expanded: list[str | dict] = []
     pending_spread_image: dict | None = None
 
@@ -123,7 +114,7 @@ def simulate_text_message(
             continue
 
         if _is_analysis_wait_message(message):
-            expanded.append(WAIT_FOR_ANALYSIS_MESSAGE)
+            expanded.append(t(str(message.get("language") or "en"), "analysis_wait"))
             continue
 
         if isinstance(message, dict) and message.get("type") == "deferred_tarot_analysis":
@@ -132,10 +123,7 @@ def simulate_text_message(
                 from_number=request.from_number,
                 reading_id=int(message["reading_id"]),
             )
-            spread_message, remaining = _combine_spread_with_narrative(
-                pending_spread_image,
-                follow_up,
-            )
+            spread_message, remaining = _combine_spread_with_narrative(pending_spread_image, follow_up)
             if spread_message is not None:
                 expanded.append(spread_message)
             expanded.extend(remaining)
@@ -162,9 +150,12 @@ def _process_registered_message(
 
     try:
         if message_type != "text" or not text:
-            outgoing = [
-                "For now I can read text messages only. Please use the menu commands as text."
-            ]
+            language = _conversation_language(db, from_number)
+            outgoing = [{
+                "en": "For now I can read text messages only. Please use the menu commands as text.",
+                "pt": "Por enquanto, só consigo ler mensagens de texto. Use os comandos do menu em texto.",
+                "es": "Por ahora, solo puedo leer mensajes de texto. Usa los comandos del menú como texto.",
+            }[language]]
         else:
             outgoing = ritual_whatsapp_conversation_service.handle_text(
                 db=db,
@@ -174,11 +165,7 @@ def _process_registered_message(
             )
 
         _dispatch_outgoing(db=db, to=from_number, messages=outgoing)
-
-        whatsapp_repository.mark_event_processed(
-            db,
-            whatsapp_message_id=whatsapp_message_id,
-        )
+        whatsapp_repository.mark_event_processed(db, whatsapp_message_id=whatsapp_message_id)
     except Exception as exc:
         whatsapp_repository.mark_event_failed(
             db,
@@ -187,6 +174,14 @@ def _process_registered_message(
         )
     finally:
         db.close()
+
+
+def _conversation_language(db: Session, to: str) -> str:
+    conversation, _ = whatsapp_repository.get_or_create_conversation_by_number(
+        db,
+        whatsapp_number=to,
+    )
+    return normalize_language(conversation.language)
 
 
 def _dispatch_outgoing(*, db: Session, to: str, messages: list[str | dict]) -> None:
@@ -198,24 +193,18 @@ def _dispatch_outgoing(*, db: Session, to: str, messages: list[str | dict]) -> N
             continue
 
         if _is_analysis_wait_message(message):
-            # The final card has already been submitted. Leave a visible pause
-            # before telling the user that the complete spread is being read.
             time.sleep(AFTER_LAST_CARD_BEFORE_ANALYSIS_SECONDS)
-            _send_and_record(db=db, to=to, message=WAIT_FOR_ANALYSIS_MESSAGE)
+            language = normalize_language(str(message.get("language") or _conversation_language(db, to)))
+            _send_and_record(db=db, to=to, message=t(language, "analysis_wait"))
             continue
 
         if isinstance(message, dict) and message.get("type") == "deferred_tarot_analysis":
-            # The wait message is already on its way to WhatsApp before the
-            # blocking model calls start.
             follow_up = ritual_whatsapp_conversation_service.complete_analysis(
                 db=db,
                 from_number=to,
                 reading_id=int(message["reading_id"]),
             )
-            spread_message, remaining = _combine_spread_with_narrative(
-                pending_spread_image,
-                follow_up,
-            )
+            spread_message, remaining = _combine_spread_with_narrative(pending_spread_image, follow_up)
             _dispatch_analysis_results(
                 db=db,
                 to=to,
@@ -226,7 +215,6 @@ def _dispatch_outgoing(*, db: Session, to: str, messages: list[str | dict]) -> N
             continue
 
         _send_and_record(db=db, to=to, message=message)
-
         if _is_individual_card_image(message):
             time.sleep(CARD_SEND_INTERVAL_SECONDS)
 
@@ -241,7 +229,6 @@ def _dispatch_analysis_results(
     spread_message: dict | None,
     remaining: list[str | dict],
 ) -> None:
-    """Send analysis stages in a deliberately spaced, deterministic order."""
     if spread_message is not None:
         _send_and_record(db=db, to=to, message=spread_message)
         time.sleep(AFTER_OVERALL_NARRATIVE_SECONDS)
@@ -255,15 +242,11 @@ def _dispatch_analysis_results(
             continue
 
         if final_synthesis is None:
-            # Card-by-card interpretation and any message that belongs before
-            # the final synthesis are submitted in their original order.
             _send_and_record(db=db, to=to, message=message)
         else:
             trailing_messages.append(message)
 
     if final_synthesis is not None:
-        # Give the card-by-card interpretation a substantial head start before
-        # the final synthesis is submitted to Meta.
         time.sleep(FINAL_SYNTHESIS_DELAY_SECONDS)
         _send_and_record(db=db, to=to, message=final_synthesis)
 
@@ -284,11 +267,13 @@ def _send_and_record(*, db: Session, to: str, message: str | dict) -> None:
 
 
 def _is_analysis_wait_message(message: str | dict) -> bool:
-    return isinstance(message, str) and message.startswith("🔍 The cards are being analyzed now")
+    return isinstance(message, dict) and message.get("type") == "analysis_wait"
 
 
 def _is_final_synthesis_message(message: str | dict) -> bool:
-    return isinstance(message, str) and message.startswith("*Final synthesis*")
+    if not isinstance(message, str):
+        return False
+    return message.startswith(("*Final synthesis*", "*Síntese final*", "*Síntesis final*"))
 
 
 def _is_individual_card_image(message: str | dict) -> bool:
@@ -317,18 +302,22 @@ def _combine_spread_with_narrative(
 
     remaining = list(follow_up)
     narrative: str | None = None
+    label: str | None = None
 
     if remaining and isinstance(remaining[0], str):
         first = remaining[0]
-        prefix = "*Overall narrative*\n\n"
-        if first.startswith(prefix):
-            narrative = first[len(prefix):].strip()
-            remaining = remaining[1:]
+        for candidate in ("Overall narrative", "Narrativa geral", "Narrativa general"):
+            prefix = f"*{candidate}*\n\n"
+            if first.startswith(prefix):
+                narrative = first[len(prefix):].strip()
+                label = candidate
+                remaining = remaining[1:]
+                break
 
     combined = dict(spread_image)
     if narrative:
         compact = _compact_text(narrative, NARRATIVE_CAPTION_MAX_CHARS)
-        combined["caption"] = f"*Overall narrative*\n\n{compact}"
+        combined["caption"] = f"*{label or 'Overall narrative'}*\n\n{compact}"
 
     return combined, remaining
 
@@ -339,11 +328,7 @@ def _compact_text(text: str, max_chars: int) -> str:
         return clean
 
     cutoff = clean[: max_chars + 1]
-    sentence_end = max(
-        cutoff.rfind(". "),
-        cutoff.rfind("! "),
-        cutoff.rfind("? "),
-    )
+    sentence_end = max(cutoff.rfind(". "), cutoff.rfind("! "), cutoff.rfind("? "))
     if sentence_end >= int(max_chars * 0.6):
         return cutoff[: sentence_end + 1].strip()
 
