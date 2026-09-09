@@ -25,9 +25,7 @@ class UserService:
     def create(self, db: Session, request: CreateUserRequest) -> UserEntity:
         user = UserEntity(
             name=request.name.strip(),
-            whatsapp_number=normalize_whatsapp_number(
-                request.whatsapp_number
-            ),
+            whatsapp_number=normalize_whatsapp_number(request.whatsapp_number),
         )
 
         profile = request.profile
@@ -39,7 +37,6 @@ class UserService:
         )
 
         db.add(user)
-
         try:
             db.commit()
         except IntegrityError as exc:
@@ -48,6 +45,28 @@ class UserService:
                 "A user with this WhatsApp number already exists."
             ) from exc
 
+        return self.get(db, user.id)
+
+    def create_named_whatsapp_user(
+        self,
+        db: Session,
+        *,
+        whatsapp_number: str,
+        name: str,
+    ) -> UserEntity:
+        clean_name = " ".join(name.strip().split())[:120]
+        if not clean_name:
+            raise ValueError("Name cannot be empty.")
+
+        normalized = normalize_whatsapp_number(whatsapp_number)
+        user = UserEntity(name=clean_name, whatsapp_number=normalized)
+        user.profile = UserProfileEntity()
+        db.add(user)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            return self.get_by_whatsapp(db, normalized)
         return self.get(db, user.id)
 
     def get(self, db: Session, user_id: int) -> UserEntity:
@@ -98,7 +117,6 @@ class UserService:
         try:
             db.commit()
         except IntegrityError:
-            # A concurrent webhook may have created the same user.
             db.rollback()
             return self.get_by_whatsapp(db, whatsapp_number), False
 
