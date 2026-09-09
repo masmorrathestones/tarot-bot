@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Optional
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,15 @@ class UserProfileResponse(BaseModel):
     moon_sign: Optional[str] = None
     rising_sign: Optional[str] = None
     mbti: Optional[str] = None
+    birth_date: Optional[date] = None
+    birth_time: Optional[time] = None
+    zodiac_sign: Optional[str] = None
+    personal_number: Optional[int] = None
+    personal_arcana_number: Optional[int] = None
+    personal_arcana_name: Optional[str] = None
+    year_arcana_number: Optional[int] = None
+    year_arcana_name: Optional[str] = None
+    year_arcana_reference_year: Optional[int] = None
 
 
 class UserResponse(BaseModel):
