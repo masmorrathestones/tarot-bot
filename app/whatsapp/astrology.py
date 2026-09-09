@@ -10,21 +10,21 @@ from timezonefinder import TimezoneFinder
 
 
 ZODIAC_SIGNS = [
-    "Áries", "Touro", "Gêmeos", "Câncer", "Leão", "Virgem",
-    "Libra", "Escorpião", "Sagitário", "Capricórnio", "Aquário", "Peixes",
+    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+    "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces",
 ]
 
 PLANETS = {
-    "Sol": swe.SUN,
-    "Lua": swe.MOON,
-    "Mercúrio": swe.MERCURY,
-    "Vênus": swe.VENUS,
-    "Marte": swe.MARS,
-    "Júpiter": swe.JUPITER,
-    "Saturno": swe.SATURN,
-    "Urano": swe.URANUS,
-    "Netuno": swe.NEPTUNE,
-    "Plutão": swe.PLUTO,
+    "Sun": swe.SUN,
+    "Moon": swe.MOON,
+    "Mercury": swe.MERCURY,
+    "Venus": swe.VENUS,
+    "Mars": swe.MARS,
+    "Jupiter": swe.JUPITER,
+    "Saturn": swe.SATURN,
+    "Uranus": swe.URANUS,
+    "Neptune": swe.NEPTUNE,
+    "Pluto": swe.PLUTO,
 }
 
 
@@ -67,16 +67,14 @@ def geocode_birth_place(query: str) -> BirthPlace:
             },
             headers={
                 "User-Agent": "tarot-bot/1.0 (natal-chart geocoder)",
-                "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
+                "Accept-Language": "en,en-US;q=0.9",
             },
         )
         response.raise_for_status()
         results = response.json()
 
     if not results:
-        raise BirthPlaceNotFoundError(
-            "Não consegui localizar esse lugar de nascimento."
-        )
+        raise BirthPlaceNotFoundError("Unable to locate that birthplace.")
 
     result = results[0]
     latitude = float(result["lat"])
@@ -87,7 +85,7 @@ def geocode_birth_place(query: str) -> BirthPlace:
     )
     if not timezone_name:
         raise BirthTimezoneNotFoundError(
-            "Não consegui determinar o fuso horário desse local."
+            "Unable to determine the timezone for that location."
         )
 
     return BirthPlace(
@@ -151,12 +149,12 @@ def calculate_natal_chart(
 def format_natal_chart(chart: dict) -> str:
     positions = chart["positions"]
     lines = [
-        "✨ Seu mapa astral básico ficou assim:",
+        "✨ Your basic natal chart looks like this:",
         "",
     ]
     for body in (
-        "Sol", "Lua", "Mercúrio", "Vênus", "Marte",
-        "Júpiter", "Saturno", "Urano", "Netuno", "Plutão",
+        "Sun", "Moon", "Mercury", "Venus", "Mars",
+        "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto",
     ):
         position = positions[body]
         lines.append(
@@ -166,10 +164,10 @@ def format_natal_chart(chart: dict) -> str:
     ascendant = chart["ascendant"]
     lines.extend(
         [
-            f"Ascendente: {ascendant['sign']} {ascendant['degree']:.2f}°",
+            f"Ascendant: {ascendant['sign']} {ascendant['degree']:.2f}°",
             "",
-            "Esses dados ficam salvos no seu perfil e podem ser usados como "
-            "contexto simbólico nas próximas leituras.",
+            "These details are saved in your profile and can be used as symbolic "
+            "context in future readings.",
         ]
     )
     return "\n".join(lines)
