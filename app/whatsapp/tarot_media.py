@@ -2,7 +2,7 @@ import os
 from io import BytesIO
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from app.tarot.enums import ArcanaType, Orientation
 from app.tarot.models import DrawnCard, TarotCard
@@ -112,28 +112,36 @@ def render_card_jpeg(card_code: str, reversed_card: bool) -> bytes:
         return output.getvalue()
 
 
-def render_spread_jpeg(drawn_cards: list[DrawnCard]) -> bytes:
-    if not drawn_cards:
-        raise ValueError("Cannot render an empty Tarot spread.")
+def _prepared_spread_card(item: DrawnCard, target_height: int) -> Image.Image:
+    with Image.open(card_asset_path(item.card.code)) as source:
+        image = source.convert("RGB")
+        if item.orientation == Orientation.REVERSED:
+            image = image.rotate(180, expand=False)
 
+        ratio = target_height / image.height
+        target_width = max(1, int(image.width * ratio))
+        return image.resize(
+            (target_width, target_height),
+            Image.Resampling.LANCZOS,
+        )
+
+
+def _save_spread_canvas(canvas: Image.Image) -> bytes:
+    output = BytesIO()
+    canvas.save(output, format="JPEG", quality=90, optimize=True)
+    return output.getvalue()
+
+
+def _render_default_spread_jpeg(drawn_cards: list[DrawnCard]) -> bytes:
     target_height = 900
     gap = 28
     images: list[Image.Image] = []
 
     try:
-        for item in drawn_cards:
-            with Image.open(card_asset_path(item.card.code)) as source:
-                image = source.convert("RGB")
-                if item.orientation == Orientation.REVERSED:
-                    image = image.rotate(180, expand=False)
-
-                ratio = target_height / image.height
-                target_width = max(1, int(image.width * ratio))
-                image = image.resize(
-                    (target_width, target_height),
-                    Image.Resampling.LANCZOS,
-                )
-                images.append(image)
+        images = [
+            _prepared_spread_card(item, target_height)
+            for item in drawn_cards
+        ]
 
         canvas_width = sum(image.width for image in images) + gap * (len(images) - 1)
         canvas = Image.new("RGB", (canvas_width, target_height), (245, 242, 235))
@@ -143,9 +151,133 @@ def render_spread_jpeg(drawn_cards: list[DrawnCard]) -> bytes:
             canvas.paste(image, (x, 0))
             x += image.width + gap
 
-        output = BytesIO()
-        canvas.save(output, format="JPEG", quality=90, optimize=True)
-        return output.getvalue()
+        return _save_spread_canvas(canvas)
     finally:
         for image in images:
             image.close()
+
+
+def _draw_centered_label(
+    draw: ImageDraw.ImageDraw,
+    *,
+    text: str,
+    center_x: int,
+    y: int,
+    font: ImageFont.ImageFont,
+) -> None:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    width = bbox[2] - bbox[0]
+    draw.text(
+        (center_x - width // 2, y),
+        text,
+        fill=(55, 52, 47),
+        font=font,
+    )
+
+
+def _render_decision_spread_jpeg(drawn_cards: list[DrawnCard]) -> bytes:
+    cards_by_position = {item.position.index: item for item in drawn_cards}
+    required_positions = set(range(1, 8))
+    missing = sorted(required_positions - set(cards_by_position))
+    if missing:
+        raise ValueError(
+            "DECISION_SPREAD requires positions 1 through 7; "
+            f"missing: {missing}"
+        )
+
+    target_height = 520
+    card_gap = 28
+    row_gap = 48
+    label_height = 30
+    margin = 36
+    background = (245, 242, 235)
+
+    images: dict[int, Image.Image] = {}
+
+    try:
+        images = {
+            index: _prepared_spread_card(cards_by_position[index], target_height)
+            for index in required_positions
+        }
+
+        action_order = (5, 1, 3)
+        inaction_order = (6, 2, 4)
+
+        def row_width(order: tuple[int, ...]) -> int:
+            return (
+                sum(images[index].width for index in order)
+                + card_gap * (len(order) - 1)
+            )
+
+        action_width = row_width(action_order)
+        inaction_width = row_width(inaction_order)
+        significator_width = images[7].width
+        canvas_width = max(action_width, inaction_width, significator_width) + margin * 2
+
+        significator_label_y = margin
+        significator_y = significator_label_y + label_height
+        action_label_y = significator_y + target_height + row_gap
+        action_y = action_label_y + label_height
+        inaction_label_y = action_y + target_height + row_gap
+        inaction_y = inaction_label_y + label_height
+        canvas_height = inaction_y + target_height + margin
+
+        canvas = Image.new("RGB", (canvas_width, canvas_height), background)
+        draw = ImageDraw.Draw(canvas)
+        font = ImageFont.load_default()
+        center_x = canvas_width // 2
+
+        _draw_centered_label(
+            draw,
+            text="DECISION / CORE ISSUE - CARD 7",
+            center_x=center_x,
+            y=significator_label_y,
+            font=font,
+        )
+        canvas.paste(
+            images[7],
+            (center_x - images[7].width // 2, significator_y),
+        )
+
+        _draw_centered_label(
+            draw,
+            text="IF YOU DO IT - 5 > 1 > 3",
+            center_x=center_x,
+            y=action_label_y,
+            font=font,
+        )
+        x = (canvas_width - action_width) // 2
+        for index in action_order:
+            canvas.paste(images[index], (x, action_y))
+            x += images[index].width + card_gap
+
+        _draw_centered_label(
+            draw,
+            text="IF YOU DON'T - 6 > 2 > 4",
+            center_x=center_x,
+            y=inaction_label_y,
+            font=font,
+        )
+        x = (canvas_width - inaction_width) // 2
+        for index in inaction_order:
+            canvas.paste(images[index], (x, inaction_y))
+            x += images[index].width + card_gap
+
+        return _save_spread_canvas(canvas)
+    finally:
+        for image in images.values():
+            image.close()
+
+
+def render_spread_jpeg(
+    drawn_cards: list[DrawnCard],
+    *,
+    spread_code: str | None = None,
+) -> bytes:
+    if not drawn_cards:
+        raise ValueError("Cannot render an empty Tarot spread.")
+
+    if spread_code == "DECISION_SPREAD":
+        return _render_decision_spread_jpeg(drawn_cards)
+
+    return _render_default_spread_jpeg(drawn_cards)
