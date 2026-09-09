@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: tarot_bot
+      POSTGRES_USER: tarot
+      POSTGRES_PASSWORD: tarot
+    ports:
+      - "5432:5432"
+    volumes:
+      - tarot_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  tarot_postgres_data:
