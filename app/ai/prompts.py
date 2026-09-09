@@ -123,13 +123,32 @@ Produce ONLY the global narrative of this Tarot spread.
 
 Do not yet write a card-by-card reading and do not give the final answer.
 
+Treat the spread as a visual sequence, not only as a collection of symbolic meanings.
+
+Explicitly read the visual story created by the cards in the order they were drawn.
+
+Pay attention to:
+- the direction of figures, bodies, faces, objects, paths, weapons, cups, animals, landscapes, light, darkness, architecture, and movement;
+- whether one card visually seems to approach, confront, avoid, leave, observe, block, support, or continue another;
+- whether visual motifs repeat, transform, disappear, intensify, or reverse across the sequence;
+- the left-to-right progression of the spread and how the visual scene changes from one card to the next;
+- how upright versus reversed orientation changes the visual flow, direction, stability, openness, blockage, or emphasis of each image;
+- whether a reversed card visually interrupts, redirects, weakens, distorts, internalizes, or complicates the movement established by surrounding cards;
+- how the visual narrative interacts with the formal meaning of each spread position.
+
 Explain:
 - the central tension or movement of the spread;
+- the visual story being narrated from the first card to the last;
 - how the positions interact;
 - important contrasts or continuities;
 - notable Major/Minor Arcana or suit patterns;
-- how reversed cards alter the flow;
+- how reversed cards alter both the symbolic and visual flow;
 - what kind of story the spread forms in relation to the user's question.
+
+The visual narrative must be presented explicitly to the user.
+Do not merely say that the cards "flow" or "interact"; describe what the imagery appears to be doing across the sequence and why that matters.
+
+Do not invent visual details that are not actually present in the Rider-Waite-Smith imagery.
 
 Write 3 to 6 substantial paragraphs in English.
 """
@@ -145,7 +164,65 @@ For each card:
 - interpret it specifically in relation to the global narrative;
 - use the supplied domain knowledge where relevant;
 - explain meaningful interaction with the other cards;
+- explain how the card contributes to the visual story of the spread;
+- consider how its upright or reversed orientation changes that visual and symbolic role;
+- identify any meaningful interaction between this card and the user's profile;
 - distinguish symbolic possibility from factual claims.
+
+PROFILE INTERACTION FOR EACH CARD
+
+For each individual card, actively check whether there is a meaningful relationship
+with any populated part of the user's profile, including:
+- MBTI tendencies;
+- Sun sign;
+- Moon sign;
+- Rising sign;
+- Mercury;
+- Venus;
+- Mars;
+- Jupiter;
+- Saturn;
+- Uranus;
+- Neptune;
+- Pluto;
+- Personal Arcana;
+- Year Arcana;
+- Personal number.
+
+When a meaningful interaction exists, EXPLICITLY explain it in that card's analysis.
+
+Do not merely name the profile element.
+
+Explain:
+- what the relationship is;
+- whether it reinforces, contrasts with, challenges, or complicates the card;
+- why that interaction matters for the user's specific question;
+- how it modifies or deepens the interpretation of that card.
+
+For astrology, consider the card's traditional planetary, zodiacal, and elemental
+associations and compare them with the user's natal chart.
+
+Look for:
+- direct planetary correspondences;
+- zodiacal correspondences;
+- elemental affinities or tensions;
+- repeated themes between the card and natal placements;
+- symbolic contrasts between the card and the user's chart.
+
+For Major Arcana, also compare the drawn card with the user's Personal Arcana
+and Year Arcana.
+
+If there is a meaningful relationship, explain whether the drawn Major Arcana:
+- repeats;
+- reinforces;
+- challenges;
+- develops;
+- contrasts with;
+- or transforms the themes of the Personal Arcana or Year Arcana.
+
+Do not invent a connection just because profile information exists.
+
+If no meaningful profile interaction exists for a card, simply omit this part.
 
 Do not yet produce the final overall answer.
 
@@ -153,6 +230,9 @@ Use this format for every card:
 
 ### <position name> — <card name> (<orientation>)
 <analysis>
+
+When relevant, integrate the profile interaction naturally into the analysis
+instead of placing it in a disconnected technical list.
 
 Write in English.
 """
