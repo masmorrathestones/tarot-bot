@@ -126,6 +126,27 @@ def _translate_chart(chart):
     return translated
 
 
+def _translate_snapshot(snapshot):
+    if not isinstance(snapshot, dict):
+        return snapshot
+
+    translated = dict(snapshot)
+    for key in ("sun_sign", "moon_sign", "rising_sign", "zodiac_sign"):
+        value = translated.get(key)
+        if value in SIGN_MAP:
+            translated[key] = SIGN_MAP[value]
+
+    for key in ("personal_arcana_name", "year_arcana_name"):
+        value = translated.get(key)
+        if value in ARCANA_MAP:
+            translated[key] = ARCANA_MAP[value]
+
+    if translated.get("natal_chart"):
+        translated["natal_chart"] = _translate_chart(translated["natal_chart"])
+
+    return translated
+
+
 def upgrade():
     bind = op.get_bind()
 
@@ -170,6 +191,21 @@ def upgrade():
         }
         bind.execute(
             profiles.update().where(profiles.c.id == row["id"]).values(**values)
+        )
+
+    readings = sa.table(
+        "readings",
+        sa.column("id", sa.Integer),
+        sa.column("profile_snapshot", sa.JSON),
+    )
+    reading_rows = bind.execute(
+        sa.select(readings.c.id, readings.c.profile_snapshot)
+    ).mappings().all()
+    for row in reading_rows:
+        bind.execute(
+            readings.update()
+            .where(readings.c.id == row["id"])
+            .values(profile_snapshot=_translate_snapshot(row["profile_snapshot"]))
         )
 
     drawn_cards = sa.table(
