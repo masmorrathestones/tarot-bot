@@ -14,11 +14,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.database.session import SessionLocal, get_db
-from app.whatsapp.client import (
-    WhatsAppConfigurationError,
-    WhatsAppProviderError,
-    whatsapp_cloud_client,
-)
+from app.whatsapp.client import whatsapp_cloud_client
 from app.whatsapp.config import get_whatsapp_settings
 from app.whatsapp.conversation import whatsapp_conversation_service
 from app.whatsapp.repository import whatsapp_repository
@@ -37,14 +33,8 @@ router = APIRouter(
 @router.get("/webhook", response_class=PlainTextResponse)
 def verify_webhook(
     hub_mode: str | None = Query(default=None, alias="hub.mode"),
-    hub_verify_token: str | None = Query(
-        default=None,
-        alias="hub.verify_token",
-    ),
-    hub_challenge: str | None = Query(
-        default=None,
-        alias="hub.challenge",
-    ),
+    hub_verify_token: str | None = Query(default=None, alias="hub.verify_token"),
+    hub_challenge: str | None = Query(default=None, alias="hub.challenge"),
 ):
     settings = get_whatsapp_settings()
 
@@ -56,10 +46,7 @@ def verify_webhook(
             settings.verify_token,
         )
     ):
-        return PlainTextResponse(
-            content=hub_challenge or "",
-            status_code=200,
-        )
+        return PlainTextResponse(content=hub_challenge or "", status_code=200)
 
     raise HTTPException(status_code=403, detail="Webhook verification failed.")
 
@@ -87,9 +74,10 @@ async def receive_webhook(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON payload.") from exc
 
-    inbound_messages = _extract_messages(payload)
+    for status in _extract_statuses(payload):
+        whatsapp_repository.update_outbound_status(db, **status)
 
-    for item in inbound_messages:
+    for item in _extract_messages(payload):
         is_new = whatsapp_repository.register_inbound_event(
             db,
             whatsapp_message_id=item["message_id"],
@@ -111,31 +99,20 @@ async def receive_webhook(
             text=item["text"],
         )
 
-    # Meta should receive an acknowledgement quickly. AI work runs after this.
     return {"status": "accepted"}
 
 
-@router.post(
-    "/test-message",
-    response_model=TestWhatsAppMessageResponse,
-)
+@router.post("/test-message", response_model=TestWhatsAppMessageResponse)
 def simulate_text_message(
     request: TestWhatsAppMessageRequest,
     db: Session = Depends(get_db),
 ):
-    """
-    Local/dev-only conversational simulator.
-
-    It exercises user creation, conversation state, profile onboarding,
-    reading persistence and the AI service without requiring Meta credentials.
-    """
     outgoing = whatsapp_conversation_service.handle_text(
         db=db,
         from_number=request.from_number,
         display_name=request.display_name,
         text=request.text,
     )
-
     return TestWhatsAppMessageResponse(outgoing_messages=outgoing)
 
 
@@ -151,51 +128,44 @@ def _process_registered_message(
 
     try:
         if message_type != "text" or not text:
-            whatsapp_cloud_client.send_text(
-                to=from_number,
-                body=(
-                    "For now I can read text messages only. "
-                    "Please send your tarot question as text."
-                ),
+            outgoing = [
+                "For now I can read text messages only. "
+                "Please send your tarot question as text."
+            ]
+        else:
+            outgoing = whatsapp_conversation_service.handle_text(
+                db=db,
+                from_number=from_number,
+                display_name=display_name,
+                text=text,
             )
-            whatsapp_repository.mark_event_processed(
-                db,
-                whatsapp_message_id=whatsapp_message_id,
-            )
-            return
-
-        outgoing = whatsapp_conversation_service.handle_text(
-            db=db,
-            from_number=from_number,
-            display_name=display_name,
-            text=text,
-        )
 
         for message in outgoing:
-            whatsapp_cloud_client.send_text(
+            sent_messages = whatsapp_cloud_client.send_text(
                 to=from_number,
                 body=message,
             )
+            for sent in sent_messages:
+                whatsapp_repository.register_outbound_message(
+                    db,
+                    whatsapp_message_id=sent["id"],
+                    to_number=from_number,
+                    text_body=sent["body"],
+                    provider_status=sent.get("status"),
+                )
 
         whatsapp_repository.mark_event_processed(
             db,
             whatsapp_message_id=whatsapp_message_id,
         )
     except Exception as exc:
-        # The broad catch is intentional at the background-worker boundary:
-        # webhook processing must be observable instead of silently dying.
-        try:
-            whatsapp_repository.mark_event_failed(
-                db,
-                whatsapp_message_id=whatsapp_message_id,
-                error_message=str(exc),
-            )
-        finally:
-            db.close()
-        return
+        whatsapp_repository.mark_event_failed(
+            db,
+            whatsapp_message_id=whatsapp_message_id,
+            error_message=str(exc),
+        )
     finally:
-        if db.is_active:
-            db.close()
+        db.close()
 
 
 def _valid_signature(
@@ -223,13 +193,10 @@ def _extract_messages(payload: dict) -> list[dict]:
         for change in entry.get("changes", []):
             value = change.get("value") or {}
             contacts = value.get("contacts") or []
-            contact_names = {}
-
-            for contact in contacts:
-                wa_id = str(contact.get("wa_id") or "")
-                name = (contact.get("profile") or {}).get("name")
-                if wa_id:
-                    contact_names[wa_id] = name
+            contact_names = {
+                str(contact.get("wa_id") or ""): (contact.get("profile") or {}).get("name")
+                for contact in contacts
+            }
 
             for message in value.get("messages") or []:
                 from_number = str(message.get("from") or "")
@@ -238,7 +205,6 @@ def _extract_messages(payload: dict) -> list[dict]:
 
                 message_type = str(message.get("type") or "unknown")
                 text_body = None
-
                 if message_type == "text":
                     text_body = (message.get("text") or {}).get("body")
 
@@ -252,8 +218,33 @@ def _extract_messages(payload: dict) -> list[dict]:
                     }
                 )
 
-    return [
-        item
-        for item in result
-        if item["message_id"] and item["from_number"]
-    ]
+    return [item for item in result if item["message_id"] and item["from_number"]]
+
+
+def _extract_statuses(payload: dict) -> list[dict]:
+    result = []
+
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value") or {}
+
+            for status in value.get("statuses") or []:
+                errors = status.get("errors") or []
+                first_error = errors[0] if errors else {}
+                error_data = first_error.get("error_data") or {}
+
+                result.append(
+                    {
+                        "whatsapp_message_id": str(status.get("id") or ""),
+                        "status": str(status.get("status") or "unknown"),
+                        "recipient_id": str(status.get("recipient_id") or "") or None,
+                        "error_code": first_error.get("code"),
+                        "error_title": first_error.get("title"),
+                        "error_message": (
+                            first_error.get("message")
+                            or error_data.get("details")
+                        ),
+                    }
+                )
+
+    return [item for item in result if item["whatsapp_message_id"]]
