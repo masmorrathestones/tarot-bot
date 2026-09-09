@@ -37,8 +37,8 @@ SPREAD_OPTIONS = {
     "3": "SELF_OTHER_RELATIONSHIP",
 }
 
-YES_ANSWERS = {"sim", "s", "yes", "y", "quero", "claro"}
-NO_ANSWERS = {"não", "nao", "n", "no", "agora não", "agora nao"}
+YES_ANSWERS = {"yes", "y", "sure", "ok", "okay"}
+NO_ANSWERS = {"no", "n", "not now"}
 
 
 class WhatsAppConversationService:
@@ -68,13 +68,13 @@ class WhatsAppConversationService:
 
         if user is None and conversation_created:
             return [
-                "Olá! Antes de começarmos, como você gostaria de ser chamado? "
-                "Pode me enviar seu nome."
+                "Hi! Before we begin, what would you like me to call you? "
+                "Send me your name."
             ]
 
         if user is None and conversation.state == "AWAITING_NAME":
             if len(clean) < 2:
-                return ["Me diga seu nome para eu concluir seu cadastro."]
+                return ["Please tell me your name so I can finish setting up your profile."]
 
             user = user_service.create_named_whatsapp_user(
                 db,
@@ -88,10 +88,9 @@ class WhatsAppConversationService:
             first_name = user.name.split()[0]
             return [
                 (
-                    f"Olá, {first_name}! Seja bem-vindo. ✨\n\n"
-                    "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
-                    "Esta é uma experiência de cartomancia digital pensada para "
-                    "transformar símbolos do Tarô em reflexão e narrativa."
+                    f"Hi, {first_name}! Welcome. ✨\n\n"
+                    "This is a digital cartomancy experience designed to turn Tarot symbols "
+                    "into reflection, interpretation, and narrative."
                 ),
                 self._help_text(),
             ]
@@ -99,26 +98,26 @@ class WhatsAppConversationService:
         if user is None:
             conversation.state = "AWAITING_NAME"
             db.commit()
-            return ["Antes de continuarmos, me diga seu nome."]
+            return ["Before we continue, please tell me your name."]
 
-        if command in {"ajuda", "help", "/help", "/ajuda"}:
+        if command in {"help", "/help"}:
             return [self._help_text()]
 
-        if command in {"cancelar", "cancel", "/cancel", "/cancelar"}:
+        if command in {"cancel", "/cancel"}:
             conversation.state = "AWAITING_QUESTION"
             conversation.pending_question = None
             conversation.pending_context = None
             db.commit()
-            return ["Fluxo atual cancelado. Quando quiser, envie uma nova pergunta."]
+            return ["The current flow has been canceled. Send a new question whenever you are ready."]
 
-        if command in {"nova", "new", "/new", "/nova", "leitura", "reading"}:
+        if command in {"new", "/new", "reading"}:
             conversation.state = "AWAITING_QUESTION"
             conversation.pending_question = None
             conversation.pending_context = None
             db.commit()
-            return ["Pronto para uma nova leitura. Envie a pergunta que você quer explorar."]
+            return ["Ready for a new reading. Send the question you want to explore."]
 
-        if command in {"perfil", "profile", "/profile", "/perfil"}:
+        if command in {"profile", "/profile"}:
             conversation.state = "PROFILE_MENU"
             conversation.pending_question = None
             conversation.pending_context = None
@@ -128,24 +127,24 @@ class WhatsAppConversationService:
         state = conversation.state
 
         if state == "PROFILE_MENU":
-            if command in {"1", "data", "nascimento", "data de nascimento"}:
+            if command in {"1", "date", "birth", "birth date"}:
                 conversation.state = "PROFILE_BIRTH_DATE"
                 db.commit()
                 return [self._birth_date_prompt()]
 
-            if command in {"2", "hora", "horário", "horario", "hora de nascimento"}:
+            if command in {"2", "time", "birth time", "natal chart"}:
                 if user.profile.birth_date is None:
                     conversation.state = "PROFILE_BIRTH_DATE"
                     db.commit()
                     return [
-                        "Para calcular o mapa astral eu preciso primeiro da sua data de nascimento.",
+                        "To calculate your natal chart, I first need your date of birth.",
                         self._birth_date_prompt(),
                     ]
                 conversation.state = "PROFILE_BIRTH_TIME"
                 db.commit()
                 return [self._birth_time_prompt()]
 
-            if command in {"3", "personalidade", "mbti"}:
+            if command in {"3", "personality", "mbti"}:
                 conversation.state = "PROFILE_MBTI_TEST"
                 conversation.pending_context = self._encode_mbti_progress(
                     index=0,
@@ -154,10 +153,10 @@ class WhatsAppConversationService:
                 db.commit()
                 return [
                     (
-                        "🧠 Vamos fazer um teste de personalidade inspirado no modelo MBTI.\n\n"
-                        "São 20 perguntas de escolha entre A e B. Não existe resposta certa: "
-                        "escolha a alternativa que mais se parece com você na maior parte do tempo.\n\n"
-                        "Você pode enviar CANCELAR a qualquer momento para interromper o teste."
+                        "🧠 Let's take a personality test inspired by the MBTI preference model.\n\n"
+                        "There are 20 A/B questions. There is no right answer: choose the option "
+                        "that describes you best most of the time.\n\n"
+                        "You can send CANCEL at any time to stop the test."
                     ),
                     format_question(0),
                 ]
@@ -171,7 +170,7 @@ class WhatsAppConversationService:
 
             if command not in {"a", "b", "1", "2"}:
                 return [
-                    "Para responder ao teste, envie apenas A ou B.",
+                    "For the personality test, reply only with A or B.",
                     format_question(index),
                 ]
 
@@ -194,11 +193,11 @@ class WhatsAppConversationService:
 
             return [
                 (
-                    f"🧠 Seu resultado é *{result}*.\n\n"
+                    f"🧠 Your result is *{result}*.\n\n"
                     f"{mbti_description(result)}\n\n"
-                    "Esse resultado descreve tendências de preferência, não uma caixa rígida "
-                    "nem um diagnóstico psicológico. Seu perfil foi salvo e poderá ser usado "
-                    "como contexto nas suas leituras."
+                    "This result describes preference tendencies rather than a rigid category "
+                    "or psychological diagnosis. It has been saved to your profile and can be "
+                    "used as context in future readings."
                 )
             ]
 
@@ -206,11 +205,11 @@ class WhatsAppConversationService:
             birth_date = self._parse_birth_date(clean)
             if birth_date is None:
                 return [
-                    "Não consegui reconhecer essa data. Envie no formato DD/MM/AAAA, "
-                    "por exemplo 17/08/2002."
+                    "I couldn't recognize that date. Send it as DD/MM/YYYY, "
+                    "for example 17/08/2002."
                 ]
             if birth_date > date.today():
-                return ["A data de nascimento não pode estar no futuro. Tente novamente."]
+                return ["Your date of birth cannot be in the future. Please try again."]
 
             zodiac_sign, zodiac_description = zodiac_for_birth_date(birth_date)
             arcana = calculate_personal_arcana(user.name, birth_date)
@@ -228,18 +227,18 @@ class WhatsAppConversationService:
             db.commit()
 
             personal_caption = (
-                f"🔮 Seu número pessoal é {arcana.personal_number}.\n\n"
-                f"Seu Arcano Pessoal é {arcana.personal_arcana_name}.\n\n"
+                f"🔮 Your personal number is {arcana.personal_number}.\n\n"
+                f"Your Personal Arcana is {arcana.personal_arcana_name}.\n\n"
                 f"{arcana.personal_arcana_description}"
             )
             year_caption = (
-                f"✨ Seu Arcano do Ano de {arcana.reference_year} é "
+                f"✨ Your Year Arcana for {arcana.reference_year} is "
                 f"{arcana.year_arcana_name} ({arcana.year_arcana_number}).\n\n"
                 f"{arcana.year_arcana_description}"
             )
 
             return [
-                f"♈ Seu signo é {zodiac_sign}.\n\n{zodiac_description}",
+                f"Your zodiac sign is {zodiac_sign}.\n\n{zodiac_description}",
                 {
                     "type": "image",
                     "url": arcana_image_url(arcana.personal_number),
@@ -251,9 +250,9 @@ class WhatsAppConversationService:
                     "caption": year_caption,
                 },
                 (
-                    "Se quiser, posso calcular o restante do seu mapa astral. "
-                    "Para isso preciso do seu horário e do seu local de nascimento.\n\n"
-                    "Deseja informar seu horário de nascimento agora? Responda SIM ou NÃO."
+                    "If you want, I can calculate the rest of your natal chart. "
+                    "For that I need your birth time and birthplace.\n\n"
+                    "Would you like to provide your birth time now? Reply YES or NO."
                 ),
             ]
 
@@ -266,22 +265,22 @@ class WhatsAppConversationService:
                 conversation.state = "AWAITING_QUESTION"
                 db.commit()
                 return [
-                    "Sem problema. Quando quiser completar seu mapa astral, use o comando PERFIL."
+                    "No problem. Use the PROFILE command whenever you want to complete your natal chart."
                 ]
-            return ["Responda SIM se quiser calcular seu mapa astral agora, ou NÃO para deixar para depois."]
+            return ["Reply YES to calculate your natal chart now, or NO to leave it for later."]
 
         if state == "PROFILE_BIRTH_TIME":
             birth_time = self._parse_birth_time(clean)
             if birth_time is None:
                 return [
-                    "Não consegui reconhecer esse horário. Envie no formato HH:MM, "
-                    "por exemplo 14:35."
+                    "I couldn't recognize that time. Send it as HH:MM, "
+                    "for example 14:35."
                 ]
             if user.profile.birth_date is None:
                 conversation.state = "PROFILE_BIRTH_DATE"
                 db.commit()
                 return [
-                    "Preciso também da sua data de nascimento antes de calcular o mapa.",
+                    "I also need your date of birth before calculating the chart.",
                     self._birth_date_prompt(),
                 ]
 
@@ -289,10 +288,10 @@ class WhatsAppConversationService:
             conversation.state = "PROFILE_BIRTH_PLACE"
             db.commit()
             return [
-                f"Horário salvo: {birth_time.strftime('%H:%M')}.\n\n"
-                "Agora me diga onde você nasceu. Envie cidade, estado/região e país, "
-                "por exemplo: Belo Horizonte, MG, Brasil.\n\n"
-                "O local é necessário para determinar o fuso horário e o Ascendente."
+                f"Birth time saved: {birth_time.strftime('%H:%M')}.\n\n"
+                "Now tell me where you were born. Send the city, state/region, and country, "
+                "for example: Belo Horizonte, Minas Gerais, Brazil.\n\n"
+                "The location is needed to determine the timezone and Ascendant."
             ]
 
         if state == "PROFILE_BIRTH_PLACE":
@@ -305,13 +304,13 @@ class WhatsAppConversationService:
                 )
             except (BirthPlaceNotFoundError, BirthTimezoneNotFoundError):
                 return [
-                    "Não consegui localizar esse lugar com segurança. "
-                    "Tente enviar no formato cidade, estado/região e país."
+                    "I couldn't locate that place reliably. "
+                    "Try sending it as city, state/region, and country."
                 ]
             except (httpx.HTTPError, ValueError):
                 return [
-                    "Não consegui calcular o mapa agora por causa de uma falha na consulta do local. "
-                    "Tente novamente em alguns instantes."
+                    "I couldn't calculate the natal chart because the location lookup failed. "
+                    "Please try again in a few moments."
                 ]
 
             user.profile.birth_place = birth_place.display_name[:250]
@@ -319,22 +318,22 @@ class WhatsAppConversationService:
             user.profile.birth_longitude = birth_place.longitude
             user.profile.birth_timezone = birth_place.timezone
             user.profile.natal_chart = chart
-            user.profile.sun_sign = chart["positions"]["Sol"]["sign"]
-            user.profile.moon_sign = chart["positions"]["Lua"]["sign"]
+            user.profile.sun_sign = chart["positions"]["Sun"]["sign"]
+            user.profile.moon_sign = chart["positions"]["Moon"]["sign"]
             user.profile.rising_sign = chart["ascendant"]["sign"]
             conversation.state = "AWAITING_QUESTION"
             db.commit()
 
             return [
                 (
-                    f"Local identificado: {birth_place.display_name}.\n"
-                    f"Fuso usado no cálculo: {birth_place.timezone}."
+                    f"Birthplace identified: {birth_place.display_name}.\n"
+                    f"Timezone used for the calculation: {birth_place.timezone}."
                 ),
                 format_natal_chart(chart),
             ]
 
         if state == "AWAITING_CONTEXT":
-            conversation.pending_context = None if command in {"skip", "pular"} else clean[:1000]
+            conversation.pending_context = None if command == "skip" else clean[:1000]
             conversation.state = "AWAITING_SPREAD"
             db.commit()
             return [self._spread_prompt()]
@@ -348,7 +347,7 @@ class WhatsAppConversationService:
             if not question:
                 conversation.state = "AWAITING_QUESTION"
                 db.commit()
-                return ["Perdi a pergunta pendente. Envie sua pergunta novamente."]
+                return ["I lost the pending question. Please send your question again."]
 
             context = conversation.pending_context
             conversation.state = "AWAITING_QUESTION"
@@ -367,12 +366,12 @@ class WhatsAppConversationService:
                 )
             except (AIConfigurationError, AIProviderError):
                 return [
-                    "Suas cartas foram sorteadas e salvas, mas a interpretação da IA "
-                    "falhou. Esta leitura poderá ser repetida sem sortear novas cartas. "
-                    f"ID da leitura: {self._latest_failed_reading_id(db, user.id)}"
+                    "Your cards were drawn and saved, but the AI interpretation failed. "
+                    "This reading can be retried without drawing new cards. "
+                    f"Reading ID: {self._latest_failed_reading_id(db, user.id)}"
                 ]
             except InvalidSpreadError:
-                return ["Essa tiragem está indisponível no momento. Envie sua pergunta novamente."]
+                return ["That spread is currently unavailable. Please send your question again."]
 
             return self._format_reading(reading)
 
@@ -381,8 +380,8 @@ class WhatsAppConversationService:
         conversation.state = "AWAITING_CONTEXT"
         db.commit()
         return [
-            "Entendi. Agora acrescente qualquer contexto que possa ajudar na leitura, "
-            "ou responda PULAR se quiser seguir apenas com a pergunta."
+            "Got it. Now add any context that may help with the reading, "
+            "or reply SKIP if you want to continue with the question alone."
         ]
 
     @staticmethod
@@ -433,46 +432,46 @@ class WhatsAppConversationService:
     @staticmethod
     def _birth_date_prompt() -> str:
         return (
-            "Qual é sua data de nascimento? Envie no formato DD/MM/AAAA. "
-            "Exemplo: 17/08/2002."
+            "What is your date of birth? Send it as DD/MM/YYYY. "
+            "Example: 17/08/2002."
         )
 
     @staticmethod
     def _birth_time_prompt() -> str:
         return (
-            "Qual é sua hora de nascimento? Envie no formato HH:MM. "
-            "Exemplo: 14:35."
+            "What is your birth time? Send it as HH:MM. "
+            "Example: 14:35."
         )
 
     @staticmethod
     def _profile_menu_text() -> str:
         return (
-            "Você pode complementar seu perfil com:\n\n"
-            "1 — Data de nascimento\n"
-            "2 — Horário e mapa astral\n"
-            "3 — Teste de personalidade (MBTI)\n\n"
-            "Envie o número da informação que deseja cadastrar."
+            "You can add the following information to your profile:\n\n"
+            "1 — Date of birth\n"
+            "2 — Birth time and natal chart\n"
+            "3 — Personality test (MBTI)\n\n"
+            "Send the number of the information you want to add or update."
         )
 
     @staticmethod
     def _spread_prompt() -> str:
         return (
-            "Escolha a tiragem:\n"
-            "1 — Situação atual / Dinâmica / Tendência\n"
-            "2 — Passado / Presente / Futuro\n"
-            "3 — Você / Outra pessoa / Relação\n\n"
-            "Responda com 1, 2 ou 3."
+            "Choose a spread:\n"
+            "1 — Current situation / Dynamic / Tendency\n"
+            "2 — Past / Present / Future\n"
+            "3 — You / Other person / Relationship\n\n"
+            "Reply with 1, 2, or 3."
         )
 
     @staticmethod
     def _help_text() -> str:
         return (
-            "Comandos disponíveis:\n\n"
-            "PERFIL — cadastrar ou atualizar informações pessoais\n"
-            "NOVA — iniciar uma nova leitura\n"
-            "CANCELAR — cancelar o fluxo atual\n"
-            "AJUDA — mostrar estes comandos\n\n"
-            "Para começar uma leitura, basta enviar sua pergunta."
+            "Available commands:\n\n"
+            "PROFILE — add or update personal information\n"
+            "NEW — start a new reading\n"
+            "CANCEL — cancel the current flow\n"
+            "HELP — show these commands\n\n"
+            "To start a reading, simply send your question."
         )
 
     @staticmethod
@@ -499,11 +498,11 @@ class WhatsAppConversationService:
             for item in drawn
         )
         return [
-            f"Leitura #{reading.id}\n\nSuas cartas:\n{cards}",
-            f"Narrativa geral\n\n{reading.narrative or ''}",
-            f"Interpretação carta a carta\n\n{reading.card_analysis or ''}",
-            f"Síntese final\n\n{reading.synthesis or ''}",
-            "Sua leitura foi salva. Envie outra pergunta quando quiser começar uma nova.",
+            f"Reading #{reading.id}\n\nYour cards:\n{cards}",
+            f"Overall narrative\n\n{reading.narrative or ''}",
+            f"Card-by-card interpretation\n\n{reading.card_analysis or ''}",
+            f"Final synthesis\n\n{reading.synthesis or ''}",
+            "Your reading has been saved. Send another question whenever you want to start a new one.",
         ]
 
 
