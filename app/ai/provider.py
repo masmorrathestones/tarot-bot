@@ -15,16 +15,17 @@ class AIProviderError(RuntimeError):
 
 
 def _with_language_requirement(instructions: str, input_text: str) -> str:
-    """Promote an explicit reading language requirement to instruction level.
-
-    Tarot prompts historically contain English-only wording. The WhatsApp
-    reading context may now include one LANGUAGE REQUIREMENT line; appending it
-    to the provider instructions makes the selected user language authoritative
-    for the generated answer without translating internal knowledge/context.
-    """
+    """Promote an explicit reading language requirement to instruction level."""
     for line in input_text.splitlines():
         if line.startswith("LANGUAGE REQUIREMENT:"):
-            return f"{instructions}\n\n{line}"
+            cleaned = instructions.replace(
+                "All generated reading content must be in English.",
+                "Follow the LANGUAGE REQUIREMENT appended below for all user-facing reading content.",
+            ).replace(
+                "Write in English.",
+                "Follow the LANGUAGE REQUIREMENT appended below.",
+            )
+            return f"{cleaned}\n\n{line}"
     return instructions
 
 
