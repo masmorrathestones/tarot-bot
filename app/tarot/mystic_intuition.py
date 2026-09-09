@@ -15,7 +15,7 @@ MYSTIC_INTUITION_TYPES = (
 
 # Each of the two independent intuition slots has a 1.2% chance to activate.
 # Most readings therefore receive no intuition at all.
-INTUITION_CHANCE_BASIS_POINTS = 120
+INTUITION_CHANCE_BASIS_POINTS = 360
 INTUITION_ROLL_SCALE = 10_000
 MAX_INTUITIONS = 2
 
