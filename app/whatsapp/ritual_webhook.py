@@ -21,6 +21,9 @@ from app.whatsapp.webhook import (
 router = APIRouter(prefix="/api/whatsapp", tags=["WhatsApp"])
 
 CARD_SEND_INTERVAL_SECONDS = 0.8
+AFTER_LAST_CARD_BEFORE_ANALYSIS_SECONDS = 3.0
+AFTER_OVERALL_NARRATIVE_SECONDS = 5.0
+FINAL_SYNTHESIS_DELAY_SECONDS = 15.0
 NARRATIVE_CAPTION_MAX_CHARS = 700
 WAIT_FOR_ANALYSIS_MESSAGE = (
     "🔍 I'm analyzing the complete spread now. Please wait while I finish the full reading.\n\n"
@@ -109,6 +112,8 @@ def simulate_text_message(
         text=request.text,
     )
 
+    # The simulator preserves production ordering but intentionally does not
+    # sleep between messages.
     expanded: list[str | dict] = []
     pending_spread_image: dict | None = None
 
@@ -193,10 +198,15 @@ def _dispatch_outgoing(*, db: Session, to: str, messages: list[str | dict]) -> N
             continue
 
         if _is_analysis_wait_message(message):
+            # The final card has already been submitted. Leave a visible pause
+            # before telling the user that the complete spread is being read.
+            time.sleep(AFTER_LAST_CARD_BEFORE_ANALYSIS_SECONDS)
             _send_and_record(db=db, to=to, message=WAIT_FOR_ANALYSIS_MESSAGE)
             continue
 
         if isinstance(message, dict) and message.get("type") == "deferred_tarot_analysis":
+            # The wait message is already on its way to WhatsApp before the
+            # blocking model calls start.
             follow_up = ritual_whatsapp_conversation_service.complete_analysis(
                 db=db,
                 from_number=to,
@@ -206,9 +216,12 @@ def _dispatch_outgoing(*, db: Session, to: str, messages: list[str | dict]) -> N
                 pending_spread_image,
                 follow_up,
             )
-            if spread_message is not None:
-                _send_and_record(db=db, to=to, message=spread_message)
-            _dispatch_outgoing(db=db, to=to, messages=remaining)
+            _dispatch_analysis_results(
+                db=db,
+                to=to,
+                spread_message=spread_message,
+                remaining=remaining,
+            )
             pending_spread_image = None
             continue
 
@@ -219,6 +232,43 @@ def _dispatch_outgoing(*, db: Session, to: str, messages: list[str | dict]) -> N
 
     if pending_spread_image is not None:
         _send_and_record(db=db, to=to, message=pending_spread_image)
+
+
+def _dispatch_analysis_results(
+    *,
+    db: Session,
+    to: str,
+    spread_message: dict | None,
+    remaining: list[str | dict],
+) -> None:
+    """Send analysis stages in a deliberately spaced, deterministic order."""
+    if spread_message is not None:
+        _send_and_record(db=db, to=to, message=spread_message)
+        time.sleep(AFTER_OVERALL_NARRATIVE_SECONDS)
+
+    final_synthesis: str | dict | None = None
+    trailing_messages: list[str | dict] = []
+
+    for message in remaining:
+        if _is_final_synthesis_message(message):
+            final_synthesis = message
+            continue
+
+        if final_synthesis is None:
+            # Card-by-card interpretation and any message that belongs before
+            # the final synthesis are submitted in their original order.
+            _send_and_record(db=db, to=to, message=message)
+        else:
+            trailing_messages.append(message)
+
+    if final_synthesis is not None:
+        # Give the card-by-card interpretation a substantial head start before
+        # the final synthesis is submitted to Meta.
+        time.sleep(FINAL_SYNTHESIS_DELAY_SECONDS)
+        _send_and_record(db=db, to=to, message=final_synthesis)
+
+    for message in trailing_messages:
+        _send_and_record(db=db, to=to, message=message)
 
 
 def _send_and_record(*, db: Session, to: str, message: str | dict) -> None:
@@ -235,6 +285,10 @@ def _send_and_record(*, db: Session, to: str, message: str | dict) -> None:
 
 def _is_analysis_wait_message(message: str | dict) -> bool:
     return isinstance(message, str) and message.startswith("🔍 The cards are being analyzed now")
+
+
+def _is_final_synthesis_message(message: str | dict) -> bool:
+    return isinstance(message, str) and message.startswith("*Final synthesis*")
 
 
 def _is_individual_card_image(message: str | dict) -> bool:
