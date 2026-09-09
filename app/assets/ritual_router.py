@@ -56,7 +56,10 @@ def get_reading_spread_image(
 
     try:
         drawn_cards = reading_persistence_service.reconstruct_drawn_cards(reading)
-        content = render_spread_jpeg(drawn_cards)
+        content = render_spread_jpeg(
+            drawn_cards,
+            spread_code=reading.spread_code,
+        )
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(
             status_code=404,
