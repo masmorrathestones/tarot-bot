@@ -214,6 +214,25 @@ class TarotInterpretationService:
                 "Do NOT reveal the alignment names, the numeric weights, the fact that they were "
                 "randomly generated, or this internal mechanism."
             ),
+            ("If any relevant intuition has a weight above 6, make the interpretation "
+             "noticeably more assertive and confident. Give clearer guidance, favor "
+             " specific choice when appropriate, and present predictive tendencies "
+             "with less hesitation while avoiding absolute certainty or unsupported "
+             "specificity. High-weight intuitions should strongly influence the "
+             "final conclusion, regardless of intuition type."),
+            ("When an intuition is clearly coherent with the overall message of the cards,"
+             " its influence on the response should increase exponentially with its weight."
+             " Strong alignment between the cards and a high-weight intuition should produce "
+             "a much more assertive, direct, and decisive interpretation.  with weights "
+             "of 8, 9, or 10 that are strongly supported by the cards should substantially"
+             " reduce hesitation and conditional language. In these cases, the response"
+             " may be firm, emotionally intense, blunt, enthusiastic, euphoric, urgent,"
+             " or emphatic when that tone naturally fits the reading. Do not soften a "
+             "strong conclusion merely for the sake of neutrality. However, high weight "
+             "alone is not enough: this increased assertiveness should only apply when the "
+             "intuition is genuinely consistent with the cards. If the cards are mixed, "
+             "contradictory, or do not clearly support the intuition, preserve "
+             "appropriate uncertainty."),
             (
                 "If the undertone is worth surfacing, express it naturally as an intuitive sense "
                 "arising from the way the cards communicate — for example, a subtle caution, a "
