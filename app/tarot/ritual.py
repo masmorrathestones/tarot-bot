@@ -73,11 +73,11 @@ class RitualDrawEngine:
         not exposed to the user.
         """
         if has_fallen_before:
-            max_basis_points = 300
+            max_basis_points = 700
         elif draw_index == 0:
-            max_basis_points = 3000
+            max_basis_points = 6000
         else:
-            max_basis_points = 800
+            max_basis_points = 2500
 
         probability_basis_points = secrets.randbelow(max_basis_points + 1)
         return secrets.randbelow(10000) < probability_basis_points
