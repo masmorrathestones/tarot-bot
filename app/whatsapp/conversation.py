@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime
 
 import httpx
@@ -14,6 +15,14 @@ from app.whatsapp.astrology import (
     calculate_natal_chart,
     format_natal_chart,
     geocode_birth_place,
+)
+from app.whatsapp.personality import (
+    MBTI_QUESTIONS,
+    calculate_mbti,
+    format_question,
+    initial_scores,
+    mbti_description,
+    score_answer,
 )
 from app.whatsapp.profile_calculations import (
     calculate_personal_arcana,
@@ -136,13 +145,62 @@ class WhatsAppConversationService:
                 db.commit()
                 return [self._birth_time_prompt()]
 
-            if command in {"3", "personalidade"}:
+            if command in {"3", "personalidade", "mbti"}:
+                conversation.state = "PROFILE_MBTI_TEST"
+                conversation.pending_context = self._encode_mbti_progress(
+                    index=0,
+                    scores=initial_scores(),
+                )
+                db.commit()
                 return [
-                    "O cadastro de personalidade ainda está sendo preparado. "
-                    "Por enquanto você pode cadastrar sua data e seus dados de nascimento.",
-                    self._profile_menu_text(),
+                    (
+                        "🧠 Vamos fazer um teste de personalidade inspirado no modelo MBTI.\n\n"
+                        "São 20 perguntas de escolha entre A e B. Não existe resposta certa: "
+                        "escolha a alternativa que mais se parece com você na maior parte do tempo.\n\n"
+                        "Você pode enviar CANCELAR a qualquer momento para interromper o teste."
+                    ),
+                    format_question(0),
                 ]
+
             return [self._profile_menu_text()]
+
+        if state == "PROFILE_MBTI_TEST":
+            progress = self._decode_mbti_progress(conversation.pending_context)
+            index = progress["index"]
+            scores = progress["scores"]
+
+            if command not in {"a", "b", "1", "2"}:
+                return [
+                    "Para responder ao teste, envie apenas A ou B.",
+                    format_question(index),
+                ]
+
+            scores = score_answer(index, command, scores)
+            next_index = index + 1
+
+            if next_index < len(MBTI_QUESTIONS):
+                conversation.pending_context = self._encode_mbti_progress(
+                    index=next_index,
+                    scores=scores,
+                )
+                db.commit()
+                return [format_question(next_index)]
+
+            result = calculate_mbti(scores)
+            user.profile.mbti = result
+            conversation.state = "AWAITING_QUESTION"
+            conversation.pending_context = None
+            db.commit()
+
+            return [
+                (
+                    f"🧠 Seu resultado é *{result}*.\n\n"
+                    f"{mbti_description(result)}\n\n"
+                    "Esse resultado descreve tendências de preferência, não uma caixa rígida "
+                    "nem um diagnóstico psicológico. Seu perfil foi salvo e poderá ser usado "
+                    "como contexto nas suas leituras."
+                )
+            ]
 
         if state == "PROFILE_BIRTH_DATE":
             birth_date = self._parse_birth_date(clean)
@@ -250,7 +308,7 @@ class WhatsAppConversationService:
                     "Não consegui localizar esse lugar com segurança. "
                     "Tente enviar no formato cidade, estado/região e país."
                 ]
-            except (httpx.HTTPError, ValueError) as exc:
+            except (httpx.HTTPError, ValueError):
                 return [
                     "Não consegui calcular o mapa agora por causa de uma falha na consulta do local. "
                     "Tente novamente em alguns instantes."
@@ -328,6 +386,27 @@ class WhatsAppConversationService:
         ]
 
     @staticmethod
+    def _encode_mbti_progress(*, index: int, scores: dict[str, int]) -> str:
+        return json.dumps(
+            {"index": index, "scores": scores},
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def _decode_mbti_progress(value: str | None) -> dict:
+        try:
+            data = json.loads(value or "")
+            index = int(data["index"])
+            scores = data["scores"]
+            if not 0 <= index < len(MBTI_QUESTIONS):
+                raise ValueError
+            if not isinstance(scores, dict):
+                raise ValueError
+            return {"index": index, "scores": scores}
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+            return {"index": 0, "scores": initial_scores()}
+
+    @staticmethod
     def _parse_birth_date(value: str) -> date | None:
         for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
             try:
@@ -371,7 +450,7 @@ class WhatsAppConversationService:
             "Você pode complementar seu perfil com:\n\n"
             "1 — Data de nascimento\n"
             "2 — Horário e mapa astral\n"
-            "3 — Personalidade (em breve)\n\n"
+            "3 — Teste de personalidade (MBTI)\n\n"
             "Envie o número da informação que deseja cadastrar."
         )
 
