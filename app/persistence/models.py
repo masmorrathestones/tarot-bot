@@ -144,7 +144,6 @@ class DrawnCardEntity(Base):
     )
 
 
-
 class WhatsAppConversationEntity(Base):
     __tablename__ = "whatsapp_conversations"
 
@@ -207,5 +206,37 @@ class WhatsAppMessageEventEntity(Base):
         server_default=func.now(),
     )
     processed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
+class WhatsAppOutboundMessageEntity(Base):
+    __tablename__ = "whatsapp_outbound_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    whatsapp_message_id: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    to_number: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    text_body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="ACCEPTED",
+        index=True,
+    )
+    provider_status: Mapped[Optional[str]] = mapped_column(String(30))
+    error_code: Mapped[Optional[int]] = mapped_column(Integer)
+    error_title: Mapped[Optional[str]] = mapped_column(String(500))
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    status_updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True)
     )
