@@ -31,29 +31,15 @@ class WhatsAppCloudClient:
         return settings
 
     def send_text(self, *, to: str, body: str) -> list[dict]:
-        settings = self._settings()
-        url = (
-            f"https://graph.facebook.com/{settings.graph_version}/"
-            f"{settings.phone_number_id}/messages"
-        )
-
-        headers = {
-            "Authorization": f"Bearer {settings.access_token}",
-            "Content-Type": "application/json",
-        }
-
         chunks = self._split_text(body, max_chars=3500)
         sent_messages = []
 
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
             for chunk in chunks:
-                response = client.post(
-                    url,
-                    headers=headers,
-                    json={
-                        "messaging_product": "whatsapp",
-                        "recipient_type": "individual",
-                        "to": to.lstrip("+"),
+                provider_message = self._post_message(
+                    client=client,
+                    to=to,
+                    message_payload={
                         "type": "text",
                         "text": {
                             "preview_url": False,
@@ -61,21 +47,6 @@ class WhatsAppCloudClient:
                         },
                     },
                 )
-
-                if response.is_error:
-                    raise WhatsAppProviderError(
-                        "WhatsApp send failed "
-                        f"({response.status_code}): {response.text}"
-                    )
-
-                payload = response.json()
-                messages = payload.get("messages") or []
-                if not messages or not messages[0].get("id"):
-                    raise WhatsAppProviderError(
-                        "WhatsApp send succeeded but provider returned no message id."
-                    )
-
-                provider_message = messages[0]
                 sent_messages.append(
                     {
                         "id": provider_message["id"],
@@ -85,6 +56,72 @@ class WhatsAppCloudClient:
                 )
 
         return sent_messages
+
+    def send_image(
+        self,
+        *,
+        to: str,
+        image_url: str,
+        caption: str,
+    ) -> list[dict]:
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+            provider_message = self._post_message(
+                client=client,
+                to=to,
+                message_payload={
+                    "type": "image",
+                    "image": {
+                        "link": image_url,
+                        "caption": caption[:1024],
+                    },
+                },
+            )
+
+        return [
+            {
+                "id": provider_message["id"],
+                "status": provider_message.get("message_status"),
+                "body": caption[:1024],
+            }
+        ]
+
+    def _post_message(
+        self,
+        *,
+        client: httpx.Client,
+        to: str,
+        message_payload: dict,
+    ) -> dict:
+        settings = self._settings()
+        url = (
+            f"https://graph.facebook.com/{settings.graph_version}/"
+            f"{settings.phone_number_id}/messages"
+        )
+        headers = {
+            "Authorization": f"Bearer {settings.access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to.lstrip("+"),
+            **message_payload,
+        }
+
+        response = client.post(url, headers=headers, json=payload)
+        if response.is_error:
+            raise WhatsAppProviderError(
+                "WhatsApp send failed "
+                f"({response.status_code}): {response.text}"
+            )
+
+        response_payload = response.json()
+        messages = response_payload.get("messages") or []
+        if not messages or not messages[0].get("id"):
+            raise WhatsAppProviderError(
+                "WhatsApp send succeeded but provider returned no message id."
+            )
+        return messages[0]
 
     @staticmethod
     def _split_text(text: str, *, max_chars: int) -> list[str]:

@@ -141,9 +141,9 @@ def _process_registered_message(
             )
 
         for message in outgoing:
-            sent_messages = whatsapp_cloud_client.send_text(
+            sent_messages = _send_outgoing(
                 to=from_number,
-                body=message,
+                message=message,
             )
             for sent in sent_messages:
                 whatsapp_repository.register_outbound_message(
@@ -166,6 +166,20 @@ def _process_registered_message(
         )
     finally:
         db.close()
+
+
+def _send_outgoing(*, to: str, message) -> list[dict]:
+    if isinstance(message, str):
+        return whatsapp_cloud_client.send_text(to=to, body=message)
+
+    if isinstance(message, dict) and message.get("type") == "image":
+        return whatsapp_cloud_client.send_image(
+            to=to,
+            image_url=message["url"],
+            caption=message.get("caption") or "",
+        )
+
+    raise ValueError(f"Unsupported outgoing WhatsApp message: {message!r}")
 
 
 def _valid_signature(

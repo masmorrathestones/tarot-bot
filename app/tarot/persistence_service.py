@@ -41,6 +41,17 @@ class ReadingPersistenceService:
             "moon_sign": p.moon_sign if p else None,
             "rising_sign": p.rising_sign if p else None,
             "mbti": p.mbti if p else None,
+            "birth_date": p.birth_date.isoformat() if p and p.birth_date else None,
+            "birth_time": p.birth_time.isoformat() if p and p.birth_time else None,
+            "birth_place": p.birth_place if p else None,
+            "personal_number": p.personal_number if p else None,
+            "personal_arcana_name": p.personal_arcana_name if p else None,
+            "year_arcana_number": p.year_arcana_number if p else None,
+            "year_arcana_name": p.year_arcana_name if p else None,
+            "year_arcana_reference_year": (
+                p.year_arcana_reference_year if p else None
+            ),
+            "natal_chart": p.natal_chart if p else None,
         }
 
         reading = ReadingEntity(
@@ -86,7 +97,6 @@ class ReadingPersistenceService:
         db: Session,
         reading_id: int,
     ) -> ReadingEntity:
-        # Lock the row so two requests cannot start the same retry at once.
         reading = db.scalar(
             select(ReadingEntity)
             .options(selectinload(ReadingEntity.drawn_cards))

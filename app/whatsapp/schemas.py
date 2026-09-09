@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -8,4 +10,4 @@ class TestWhatsAppMessageRequest(BaseModel):
 
 
 class TestWhatsAppMessageResponse(BaseModel):
-    outgoing_messages: list[str]
+    outgoing_messages: list[str | dict[str, Any]]
