@@ -3,7 +3,7 @@
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0004_add_whatsapp_outbound_messages"
+revision = "0004_whatsapp_outbound"
 down_revision = "0003_add_whatsapp_conversations"
 branch_labels = None
 depends_on = None
