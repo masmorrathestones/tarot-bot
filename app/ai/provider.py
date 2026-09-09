@@ -14,6 +14,20 @@ class AIProviderError(RuntimeError):
     pass
 
 
+def _with_language_requirement(instructions: str, input_text: str) -> str:
+    """Promote an explicit reading language requirement to instruction level.
+
+    Tarot prompts historically contain English-only wording. The WhatsApp
+    reading context may now include one LANGUAGE REQUIREMENT line; appending it
+    to the provider instructions makes the selected user language authoritative
+    for the generated answer without translating internal knowledge/context.
+    """
+    for line in input_text.splitlines():
+        if line.startswith("LANGUAGE REQUIREMENT:"):
+            return f"{instructions}\n\n{line}"
+    return instructions
+
+
 class OpenAITextProvider:
     def __init__(self) -> None:
         settings = get_ai_settings()
@@ -31,7 +45,7 @@ class OpenAITextProvider:
         try:
             response = self.client.responses.create(
                 model=self.model,
-                instructions=instructions,
+                instructions=_with_language_requirement(instructions, input_text),
                 input=input_text,
             )
             return response.output_text.strip()
@@ -46,16 +60,11 @@ class OpenAITextProvider:
         schema_name: str,
         schema: dict[str, Any],
     ) -> dict[str, Any]:
-        """Generate JSON that must match the supplied JSON Schema.
-
-        The Responses API Structured Outputs mode is used with strict schema
-        adherence. The caller still validates the parsed value against its
-        application-level allow-list before using it.
-        """
+        """Generate JSON that must match the supplied JSON Schema."""
         try:
             response = self.client.responses.create(
                 model=self.model,
-                instructions=instructions,
+                instructions=_with_language_requirement(instructions, input_text),
                 input=input_text,
                 text={
                     "format": {
@@ -73,6 +82,4 @@ class OpenAITextProvider:
         except AIProviderError:
             raise
         except Exception as exc:
-            raise AIProviderError(
-                f"AI structured provider request failed: {exc}"
-            ) from exc
+            raise AIProviderError(f"AI structured provider request failed: {exc}") from exc
