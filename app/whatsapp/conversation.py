@@ -1,11 +1,20 @@
 from datetime import date, datetime
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.ai.provider import AIConfigurationError, AIProviderError
 from app.tarot.persistence_service import reading_persistence_service
 from app.tarot.reading_flow import InvalidSpreadError, tarot_reading_flow
 from app.users.service import UserNotFoundError, user_service
+from app.whatsapp.arcana_media import arcana_image_url
+from app.whatsapp.astrology import (
+    BirthPlaceNotFoundError,
+    BirthTimezoneNotFoundError,
+    calculate_natal_chart,
+    format_natal_chart,
+    geocode_birth_place,
+)
 from app.whatsapp.profile_calculations import (
     calculate_personal_arcana,
     zodiac_for_birth_date,
@@ -19,6 +28,9 @@ SPREAD_OPTIONS = {
     "3": "SELF_OTHER_RELATIONSHIP",
 }
 
+YES_ANSWERS = {"sim", "s", "yes", "y", "quero", "claro"}
+NO_ANSWERS = {"não", "nao", "n", "no", "agora não", "agora nao"}
+
 
 class WhatsAppConversationService:
     def handle_text(
@@ -28,7 +40,7 @@ class WhatsAppConversationService:
         from_number: str,
         display_name: str | None,
         text: str,
-    ) -> list[str]:
+    ) -> list[str | dict]:
         clean = text.strip()
         command = clean.lower()
 
@@ -45,8 +57,6 @@ class WhatsAppConversationService:
             )
         )
 
-        # A brand-new number starts with a name prompt. The first message is
-        # only the contact trigger; it is not silently used as the user's name.
         if user is None and conversation_created:
             return [
                 "Olá! Antes de começarmos, como você gostaria de ser chamado? "
@@ -78,7 +88,6 @@ class WhatsAppConversationService:
             ]
 
         if user is None:
-            # Defensive recovery for an inconsistent onboarding row.
             conversation.state = "AWAITING_NAME"
             db.commit()
             return ["Antes de continuarmos, me diga seu nome."]
@@ -113,21 +122,24 @@ class WhatsAppConversationService:
             if command in {"1", "data", "nascimento", "data de nascimento"}:
                 conversation.state = "PROFILE_BIRTH_DATE"
                 db.commit()
-                return [
-                    "Qual é sua data de nascimento? Envie no formato DD/MM/AAAA. "
-                    "Exemplo: 17/08/2002."
-                ]
-            if command in {"2", "hora", "horário", "hora de nascimento"}:
+                return [self._birth_date_prompt()]
+
+            if command in {"2", "hora", "horário", "horario", "hora de nascimento"}:
+                if user.profile.birth_date is None:
+                    conversation.state = "PROFILE_BIRTH_DATE"
+                    db.commit()
+                    return [
+                        "Para calcular o mapa astral eu preciso primeiro da sua data de nascimento.",
+                        self._birth_date_prompt(),
+                    ]
                 conversation.state = "PROFILE_BIRTH_TIME"
                 db.commit()
-                return [
-                    "Qual é sua hora de nascimento? Envie no formato HH:MM. "
-                    "Exemplo: 14:35."
-                ]
+                return [self._birth_time_prompt()]
+
             if command in {"3", "personalidade"}:
                 return [
                     "O cadastro de personalidade ainda está sendo preparado. "
-                    "Por enquanto você pode cadastrar sua data ou hora de nascimento.",
+                    "Por enquanto você pode cadastrar sua data e seus dados de nascimento.",
                     self._profile_menu_text(),
                 ]
             return [self._profile_menu_text()]
@@ -147,7 +159,6 @@ class WhatsAppConversationService:
 
             user.profile.birth_date = birth_date
             user.profile.zodiac_sign = zodiac_sign
-            # Keep the existing sun_sign field in sync for the AI profile layer.
             user.profile.sun_sign = zodiac_sign
             user.profile.personal_number = arcana.personal_number
             user.profile.personal_arcana_number = arcana.personal_number
@@ -155,21 +166,51 @@ class WhatsAppConversationService:
             user.profile.year_arcana_number = arcana.year_arcana_number
             user.profile.year_arcana_name = arcana.year_arcana_name
             user.profile.year_arcana_reference_year = arcana.reference_year
-            conversation.state = "AWAITING_QUESTION"
+            conversation.state = "PROFILE_ASK_BIRTH_TIME"
             db.commit()
+
+            personal_caption = (
+                f"🔮 Seu número pessoal é {arcana.personal_number}.\n\n"
+                f"Seu Arcano Pessoal é {arcana.personal_arcana_name}.\n\n"
+                f"{arcana.personal_arcana_description}"
+            )
+            year_caption = (
+                f"✨ Seu Arcano do Ano de {arcana.reference_year} é "
+                f"{arcana.year_arcana_name} ({arcana.year_arcana_number}).\n\n"
+                f"{arcana.year_arcana_description}"
+            )
 
             return [
                 f"♈ Seu signo é {zodiac_sign}.\n\n{zodiac_description}",
+                {
+                    "type": "image",
+                    "url": arcana_image_url(arcana.personal_number),
+                    "caption": personal_caption,
+                },
+                {
+                    "type": "image",
+                    "url": arcana_image_url(arcana.year_arcana_number),
+                    "caption": year_caption,
+                },
                 (
-                    f"🔮 Com base no seu nome e na sua data de nascimento, "
-                    f"seu número pessoal é {arcana.personal_number}.\n\n"
-                    f"Seu Arcano Pessoal é {arcana.personal_arcana_name}.\n"
-                    f"{arcana.personal_arcana_description}\n\n"
-                    f"Para {arcana.reference_year}, seu Arcano do Ano é "
-                    f"{arcana.year_arcana_name} ({arcana.year_arcana_number}).\n"
-                    f"{arcana.year_arcana_description}"
+                    "Se quiser, posso calcular o restante do seu mapa astral. "
+                    "Para isso preciso do seu horário e do seu local de nascimento.\n\n"
+                    "Deseja informar seu horário de nascimento agora? Responda SIM ou NÃO."
                 ),
             ]
+
+        if state == "PROFILE_ASK_BIRTH_TIME":
+            if command in YES_ANSWERS:
+                conversation.state = "PROFILE_BIRTH_TIME"
+                db.commit()
+                return [self._birth_time_prompt()]
+            if command in NO_ANSWERS:
+                conversation.state = "AWAITING_QUESTION"
+                db.commit()
+                return [
+                    "Sem problema. Quando quiser completar seu mapa astral, use o comando PERFIL."
+                ]
+            return ["Responda SIM se quiser calcular seu mapa astral agora, ou NÃO para deixar para depois."]
 
         if state == "PROFILE_BIRTH_TIME":
             birth_time = self._parse_birth_time(clean)
@@ -178,11 +219,60 @@ class WhatsAppConversationService:
                     "Não consegui reconhecer esse horário. Envie no formato HH:MM, "
                     "por exemplo 14:35."
                 ]
+            if user.profile.birth_date is None:
+                conversation.state = "PROFILE_BIRTH_DATE"
+                db.commit()
+                return [
+                    "Preciso também da sua data de nascimento antes de calcular o mapa.",
+                    self._birth_date_prompt(),
+                ]
+
             user.profile.birth_time = birth_time
-            conversation.state = "AWAITING_QUESTION"
+            conversation.state = "PROFILE_BIRTH_PLACE"
             db.commit()
             return [
-                f"Hora de nascimento salva: {birth_time.strftime('%H:%M')}."
+                f"Horário salvo: {birth_time.strftime('%H:%M')}.\n\n"
+                "Agora me diga onde você nasceu. Envie cidade, estado/região e país, "
+                "por exemplo: Belo Horizonte, MG, Brasil.\n\n"
+                "O local é necessário para determinar o fuso horário e o Ascendente."
+            ]
+
+        if state == "PROFILE_BIRTH_PLACE":
+            try:
+                birth_place = geocode_birth_place(clean)
+                chart = calculate_natal_chart(
+                    birth_date=user.profile.birth_date,
+                    birth_time=user.profile.birth_time,
+                    birth_place=birth_place,
+                )
+            except (BirthPlaceNotFoundError, BirthTimezoneNotFoundError):
+                return [
+                    "Não consegui localizar esse lugar com segurança. "
+                    "Tente enviar no formato cidade, estado/região e país."
+                ]
+            except (httpx.HTTPError, ValueError) as exc:
+                return [
+                    "Não consegui calcular o mapa agora por causa de uma falha na consulta do local. "
+                    "Tente novamente em alguns instantes."
+                ]
+
+            user.profile.birth_place = birth_place.display_name[:250]
+            user.profile.birth_latitude = birth_place.latitude
+            user.profile.birth_longitude = birth_place.longitude
+            user.profile.birth_timezone = birth_place.timezone
+            user.profile.natal_chart = chart
+            user.profile.sun_sign = chart["positions"]["Sol"]["sign"]
+            user.profile.moon_sign = chart["positions"]["Lua"]["sign"]
+            user.profile.rising_sign = chart["ascendant"]["sign"]
+            conversation.state = "AWAITING_QUESTION"
+            db.commit()
+
+            return [
+                (
+                    f"Local identificado: {birth_place.display_name}.\n"
+                    f"Fuso usado no cálculo: {birth_place.timezone}."
+                ),
+                format_natal_chart(chart),
             ]
 
         if state == "AWAITING_CONTEXT":
@@ -228,7 +318,6 @@ class WhatsAppConversationService:
 
             return self._format_reading(reading)
 
-        # Default READY state: ordinary text starts a reading.
         conversation.pending_question = clean[:500]
         conversation.pending_context = None
         conversation.state = "AWAITING_CONTEXT"
@@ -263,11 +352,25 @@ class WhatsAppConversationService:
         return value if value in valid_codes else None
 
     @staticmethod
+    def _birth_date_prompt() -> str:
+        return (
+            "Qual é sua data de nascimento? Envie no formato DD/MM/AAAA. "
+            "Exemplo: 17/08/2002."
+        )
+
+    @staticmethod
+    def _birth_time_prompt() -> str:
+        return (
+            "Qual é sua hora de nascimento? Envie no formato HH:MM. "
+            "Exemplo: 14:35."
+        )
+
+    @staticmethod
     def _profile_menu_text() -> str:
         return (
             "Você pode complementar seu perfil com:\n\n"
             "1 — Data de nascimento\n"
-            "2 — Hora de nascimento\n"
+            "2 — Horário e mapa astral\n"
             "3 — Personalidade (em breve)\n\n"
             "Envie o número da informação que deseja cadastrar."
         )
