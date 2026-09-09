@@ -1,4 +1,5 @@
 import json
+import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
@@ -18,6 +19,12 @@ from app.whatsapp.webhook import (
 
 
 router = APIRouter(prefix="/api/whatsapp", tags=["WhatsApp"])
+
+# Submit each selected card to Meta serially and leave a small interval before
+# submitting the next one. This makes the progressive draw visible and keeps
+# the application-side send order deterministic.
+CARD_SEND_INTERVAL_SECONDS = 0.8
+NARRATIVE_CAPTION_MAX_CHARS = 700
 
 
 @router.get("/webhook", response_class=PlainTextResponse)
@@ -101,20 +108,37 @@ def simulate_text_message(
         text=request.text,
     )
 
-    # In the simulator there is no real WhatsApp send boundary, so resolve the
-    # deferred action synchronously while preserving the message order.
+    # Reproduce the production delivery order in the simulator: individual
+    # cards first, then the wait message, then analysis, then the complete
+    # spread image carrying the compact overall narrative.
     expanded: list[str | dict] = []
+    pending_spread_image: dict | None = None
+
     for message in outgoing:
+        if _is_complete_spread_image(message):
+            pending_spread_image = dict(message)
+            continue
+
         if isinstance(message, dict) and message.get("type") == "deferred_tarot_analysis":
-            expanded.extend(
-                ritual_whatsapp_conversation_service.complete_analysis(
-                    db=db,
-                    from_number=request.from_number,
-                    reading_id=int(message["reading_id"]),
-                )
+            follow_up = ritual_whatsapp_conversation_service.complete_analysis(
+                db=db,
+                from_number=request.from_number,
+                reading_id=int(message["reading_id"]),
             )
-        else:
-            expanded.append(message)
+            spread_message, remaining = _combine_spread_with_narrative(
+                pending_spread_image,
+                follow_up,
+            )
+            if spread_message is not None:
+                expanded.append(spread_message)
+            expanded.extend(remaining)
+            pending_spread_image = None
+            continue
+
+        expanded.append(message)
+
+    if pending_spread_image is not None:
+        expanded.append(pending_spread_image)
 
     return TestWhatsAppMessageResponse(outgoing_messages=expanded)
 
@@ -159,25 +183,114 @@ def _process_registered_message(
 
 
 def _dispatch_outgoing(*, db: Session, to: str, messages: list[str | dict]) -> None:
+    pending_spread_image: dict | None = None
+
     for message in messages:
+        # The composed spread must not be sent before analysis. Hold it so the
+        # user first sees the explicit wait message while the model is working.
+        if _is_complete_spread_image(message):
+            pending_spread_image = dict(message)
+            continue
+
         if isinstance(message, dict) and message.get("type") == "deferred_tarot_analysis":
-            # Everything before this action has already been sent to WhatsApp.
-            # The user therefore sees the complete spread and the "analyzing"
-            # message before the blocking AI interpretation request begins.
+            # Everything before this action (including the wait message) has
+            # already been submitted to WhatsApp. Only now start the blocking
+            # interpretation request.
             follow_up = ritual_whatsapp_conversation_service.complete_analysis(
                 db=db,
                 from_number=to,
                 reading_id=int(message["reading_id"]),
             )
-            _dispatch_outgoing(db=db, to=to, messages=follow_up)
+            spread_message, remaining = _combine_spread_with_narrative(
+                pending_spread_image,
+                follow_up,
+            )
+            if spread_message is not None:
+                _send_and_record(db=db, to=to, message=spread_message)
+            _dispatch_outgoing(db=db, to=to, messages=remaining)
+            pending_spread_image = None
             continue
 
-        sent_messages = _send_outgoing(to=to, message=message)
-        for sent in sent_messages:
-            whatsapp_repository.register_outbound_message(
-                db,
-                whatsapp_message_id=sent["id"],
-                to_number=to,
-                text_body=sent["body"],
-                provider_status=sent.get("status"),
-            )
+        _send_and_record(db=db, to=to, message=message)
+
+        # Individual selected cards are deliberately submitted one by one. The
+        # next card is never submitted before the current send request returns.
+        if _is_individual_card_image(message):
+            time.sleep(CARD_SEND_INTERVAL_SECONDS)
+
+    if pending_spread_image is not None:
+        _send_and_record(db=db, to=to, message=pending_spread_image)
+
+
+def _send_and_record(*, db: Session, to: str, message: str | dict) -> None:
+    sent_messages = _send_outgoing(to=to, message=message)
+    for sent in sent_messages:
+        whatsapp_repository.register_outbound_message(
+            db,
+            whatsapp_message_id=sent["id"],
+            to_number=to,
+            text_body=sent["body"],
+            provider_status=sent.get("status"),
+        )
+
+
+def _is_individual_card_image(message: str | dict) -> bool:
+    return (
+        isinstance(message, dict)
+        and message.get("type") == "image"
+        and "/api/assets/cards/" in str(message.get("url") or "")
+    )
+
+
+def _is_complete_spread_image(message: str | dict) -> bool:
+    return (
+        isinstance(message, dict)
+        and message.get("type") == "image"
+        and "/api/assets/readings/" in str(message.get("url") or "")
+        and str(message.get("url") or "").endswith("/spread.jpg")
+    )
+
+
+def _combine_spread_with_narrative(
+    spread_image: dict | None,
+    follow_up: list[str | dict],
+) -> tuple[dict | None, list[str | dict]]:
+    if spread_image is None:
+        return None, follow_up
+
+    remaining = list(follow_up)
+    narrative: str | None = None
+
+    if remaining and isinstance(remaining[0], str):
+        first = remaining[0]
+        prefix = "*Overall narrative*\n\n"
+        if first.startswith(prefix):
+            narrative = first[len(prefix):].strip()
+            remaining = remaining[1:]
+
+    combined = dict(spread_image)
+    if narrative:
+        compact = _compact_text(narrative, NARRATIVE_CAPTION_MAX_CHARS)
+        combined["caption"] = f"*Overall narrative*\n\n{compact}"
+
+    return combined, remaining
+
+
+def _compact_text(text: str, max_chars: int) -> str:
+    clean = " ".join(text.split())
+    if len(clean) <= max_chars:
+        return clean
+
+    cutoff = clean[: max_chars + 1]
+    sentence_end = max(
+        cutoff.rfind(". "),
+        cutoff.rfind("! "),
+        cutoff.rfind("? "),
+    )
+    if sentence_end >= int(max_chars * 0.6):
+        return cutoff[: sentence_end + 1].strip()
+
+    word_end = cutoff.rfind(" ")
+    if word_end > 0:
+        cutoff = cutoff[:word_end]
+    return cutoff.rstrip(" ,;:-") + "…"
