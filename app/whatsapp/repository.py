@@ -9,40 +9,50 @@ from app.persistence.models import (
     WhatsAppMessageEventEntity,
     WhatsAppOutboundMessageEntity,
 )
+from app.users.service import normalize_whatsapp_number
 
 
 class WhatsAppRepository:
-    def get_or_create_conversation(
+    def get_or_create_conversation_by_number(
         self,
         db: Session,
         *,
-        user_id: int,
-    ) -> WhatsAppConversationEntity:
+        whatsapp_number: str,
+        user_id: int | None = None,
+    ) -> tuple[WhatsAppConversationEntity, bool]:
+        number = normalize_whatsapp_number(whatsapp_number)
         conversation = db.scalar(
-            select(WhatsAppConversationEntity)
-            .where(WhatsAppConversationEntity.user_id == user_id)
+            select(WhatsAppConversationEntity).where(
+                WhatsAppConversationEntity.whatsapp_number == number
+            )
         )
         if conversation is not None:
-            return conversation
+            if user_id is not None and conversation.user_id is None:
+                conversation.user_id = user_id
+                if conversation.state == "AWAITING_NAME":
+                    conversation.state = "AWAITING_QUESTION"
+                db.commit()
+            return conversation, False
 
         conversation = WhatsAppConversationEntity(
             user_id=user_id,
-            state="AWAITING_QUESTION",
+            whatsapp_number=number,
+            state="AWAITING_QUESTION" if user_id is not None else "AWAITING_NAME",
         )
         db.add(conversation)
-
         try:
             db.commit()
+            return conversation, True
         except IntegrityError:
             db.rollback()
             conversation = db.scalar(
-                select(WhatsAppConversationEntity)
-                .where(WhatsAppConversationEntity.user_id == user_id)
+                select(WhatsAppConversationEntity).where(
+                    WhatsAppConversationEntity.whatsapp_number == number
+                )
             )
             if conversation is None:
                 raise
-
-        return conversation
+            return conversation, False
 
     def register_inbound_event(
         self,
@@ -55,25 +65,23 @@ class WhatsAppRepository:
         text_body: str | None,
     ) -> bool:
         existing = db.scalar(
-            select(WhatsAppMessageEventEntity.id)
-            .where(
-                WhatsAppMessageEventEntity.whatsapp_message_id
-                == whatsapp_message_id
+            select(WhatsAppMessageEventEntity.id).where(
+                WhatsAppMessageEventEntity.whatsapp_message_id == whatsapp_message_id
             )
         )
         if existing is not None:
             return False
 
-        event = WhatsAppMessageEventEntity(
-            whatsapp_message_id=whatsapp_message_id,
-            from_number=from_number,
-            display_name=display_name,
-            message_type=message_type,
-            text_body=text_body,
-            status="RECEIVED",
+        db.add(
+            WhatsAppMessageEventEntity(
+                whatsapp_message_id=whatsapp_message_id,
+                from_number=from_number,
+                display_name=display_name,
+                message_type=message_type,
+                text_body=text_body,
+                status="RECEIVED",
+            )
         )
-        db.add(event)
-
         try:
             db.commit()
             return True
@@ -91,16 +99,11 @@ class WhatsAppRepository:
         provider_status: str | None = None,
     ) -> None:
         existing = db.scalar(
-            select(WhatsAppOutboundMessageEntity)
-            .where(
-                WhatsAppOutboundMessageEntity.whatsapp_message_id
-                == whatsapp_message_id
+            select(WhatsAppOutboundMessageEntity).where(
+                WhatsAppOutboundMessageEntity.whatsapp_message_id == whatsapp_message_id
             )
         )
-
         if existing is not None:
-            # A delivery-status webhook can beat this insert. Reconcile the
-            # placeholder instead of discarding the original message content.
             existing.to_number = to_number
             existing.text_body = text_body
             if not existing.provider_status:
@@ -122,10 +125,8 @@ class WhatsAppRepository:
         except IntegrityError:
             db.rollback()
             existing = db.scalar(
-                select(WhatsAppOutboundMessageEntity)
-                .where(
-                    WhatsAppOutboundMessageEntity.whatsapp_message_id
-                    == whatsapp_message_id
+                select(WhatsAppOutboundMessageEntity).where(
+                    WhatsAppOutboundMessageEntity.whatsapp_message_id == whatsapp_message_id
                 )
             )
             if existing is not None:
@@ -145,13 +146,10 @@ class WhatsAppRepository:
         error_message: str | None,
     ) -> None:
         outbound = db.scalar(
-            select(WhatsAppOutboundMessageEntity)
-            .where(
-                WhatsAppOutboundMessageEntity.whatsapp_message_id
-                == whatsapp_message_id
+            select(WhatsAppOutboundMessageEntity).where(
+                WhatsAppOutboundMessageEntity.whatsapp_message_id == whatsapp_message_id
             )
         )
-
         if outbound is None:
             outbound = WhatsAppOutboundMessageEntity(
                 whatsapp_message_id=whatsapp_message_id,
@@ -168,22 +166,14 @@ class WhatsAppRepository:
         outbound.status_updated_at = datetime.now(timezone.utc)
         db.commit()
 
-    def mark_event_processed(
-        self,
-        db: Session,
-        *,
-        whatsapp_message_id: str,
-    ) -> None:
+    def mark_event_processed(self, db: Session, *, whatsapp_message_id: str) -> None:
         event = db.scalar(
-            select(WhatsAppMessageEventEntity)
-            .where(
-                WhatsAppMessageEventEntity.whatsapp_message_id
-                == whatsapp_message_id
+            select(WhatsAppMessageEventEntity).where(
+                WhatsAppMessageEventEntity.whatsapp_message_id == whatsapp_message_id
             )
         )
         if event is None:
             return
-
         event.status = "PROCESSED"
         event.error_message = None
         event.processed_at = datetime.now(timezone.utc)
@@ -197,15 +187,12 @@ class WhatsAppRepository:
         error_message: str,
     ) -> None:
         event = db.scalar(
-            select(WhatsAppMessageEventEntity)
-            .where(
-                WhatsAppMessageEventEntity.whatsapp_message_id
-                == whatsapp_message_id
+            select(WhatsAppMessageEventEntity).where(
+                WhatsAppMessageEventEntity.whatsapp_message_id == whatsapp_message_id
             )
         )
         if event is None:
             return
-
         event.status = "FAILED"
         event.error_message = error_message[:5000]
         event.processed_at = datetime.now(timezone.utc)

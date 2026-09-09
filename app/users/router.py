@@ -24,6 +24,17 @@ def map_user(user) -> UserResponse:
             moon_sign=p.moon_sign if p else None,
             rising_sign=p.rising_sign if p else None,
             mbti=p.mbti if p else None,
+            birth_date=p.birth_date if p else None,
+            birth_time=p.birth_time if p else None,
+            zodiac_sign=p.zodiac_sign if p else None,
+            personal_number=p.personal_number if p else None,
+            personal_arcana_number=p.personal_arcana_number if p else None,
+            personal_arcana_name=p.personal_arcana_name if p else None,
+            year_arcana_number=p.year_arcana_number if p else None,
+            year_arcana_name=p.year_arcana_name if p else None,
+            year_arcana_reference_year=(
+                p.year_arcana_reference_year if p else None
+            ),
         ),
         created_at=user.created_at,
         updated_at=user.updated_at,

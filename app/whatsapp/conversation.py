@@ -1,33 +1,17 @@
+from datetime import date, datetime
+
 from sqlalchemy.orm import Session
 
 from app.ai.provider import AIConfigurationError, AIProviderError
 from app.tarot.persistence_service import reading_persistence_service
 from app.tarot.reading_flow import InvalidSpreadError, tarot_reading_flow
-from app.users.service import user_service
+from app.users.service import UserNotFoundError, user_service
+from app.whatsapp.profile_calculations import (
+    calculate_personal_arcana,
+    zodiac_for_birth_date,
+)
 from app.whatsapp.repository import whatsapp_repository
 
-
-ZODIAC_SIGNS = {
-    "ARIES": "Aries",
-    "TAURUS": "Taurus",
-    "GEMINI": "Gemini",
-    "CANCER": "Cancer",
-    "LEO": "Leo",
-    "VIRGO": "Virgo",
-    "LIBRA": "Libra",
-    "SCORPIO": "Scorpio",
-    "SAGITTARIUS": "Sagittarius",
-    "CAPRICORN": "Capricorn",
-    "AQUARIUS": "Aquarius",
-    "PISCES": "Pisces",
-}
-
-VALID_MBTI = {
-    "ISTJ", "ISFJ", "INFJ", "INTJ",
-    "ISTP", "ISFP", "INFP", "INTP",
-    "ESTP", "ESFP", "ENFP", "ENTP",
-    "ESTJ", "ESFJ", "ENFJ", "ENTJ",
-}
 
 SPREAD_OPTIONS = {
     "1": "THREE_CARD_SITUATION",
@@ -45,110 +29,164 @@ class WhatsAppConversationService:
         display_name: str | None,
         text: str,
     ) -> list[str]:
-        user, created = user_service.get_or_create_by_whatsapp(
-            db,
-            whatsapp_number=from_number,
-            display_name=display_name,
-        )
-        conversation = whatsapp_repository.get_or_create_conversation(
-            db,
-            user_id=user.id,
-        )
-
         clean = text.strip()
         command = clean.lower()
 
-        if command in {"help", "/help"}:
+        try:
+            user = user_service.get_by_whatsapp(db, from_number)
+        except UserNotFoundError:
+            user = None
+
+        conversation, conversation_created = (
+            whatsapp_repository.get_or_create_conversation_by_number(
+                db,
+                whatsapp_number=from_number,
+                user_id=user.id if user else None,
+            )
+        )
+
+        # A brand-new number starts with a name prompt. The first message is
+        # only the contact trigger; it is not silently used as the user's name.
+        if user is None and conversation_created:
+            return [
+                "Olá! Antes de começarmos, como você gostaria de ser chamado? "
+                "Pode me enviar seu nome."
+            ]
+
+        if user is None and conversation.state == "AWAITING_NAME":
+            if len(clean) < 2:
+                return ["Me diga seu nome para eu concluir seu cadastro."]
+
+            user = user_service.create_named_whatsapp_user(
+                db,
+                whatsapp_number=from_number,
+                name=clean,
+            )
+            conversation.user_id = user.id
+            conversation.state = "AWAITING_QUESTION"
+            db.commit()
+
+            first_name = user.name.split()[0]
+            return [
+                (
+                    f"Olá, {first_name}! Seja bem-vindo. ✨\n\n"
+                    "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
+                    "Esta é uma experiência de cartomancia digital pensada para "
+                    "transformar símbolos do Tarô em reflexão e narrativa."
+                ),
+                self._help_text(),
+            ]
+
+        if user is None:
+            # Defensive recovery for an inconsistent onboarding row.
+            conversation.state = "AWAITING_NAME"
+            db.commit()
+            return ["Antes de continuarmos, me diga seu nome."]
+
+        if command in {"ajuda", "help", "/help", "/ajuda"}:
             return [self._help_text()]
 
-        if command in {"cancel", "/cancel", "new", "/new", "reading"}:
+        if command in {"cancelar", "cancel", "/cancel", "/cancelar"}:
             conversation.state = "AWAITING_QUESTION"
             conversation.pending_question = None
             conversation.pending_context = None
             db.commit()
-            return [
-                "Ready for a new reading. Send me the question you want to explore."
-            ]
+            return ["Fluxo atual cancelado. Quando quiser, envie uma nova pergunta."]
 
-        if command in {"profile", "/profile"}:
-            conversation.state = "PROFILE_SUN"
+        if command in {"nova", "new", "/new", "/nova", "leitura", "reading"}:
+            conversation.state = "AWAITING_QUESTION"
             conversation.pending_question = None
             conversation.pending_context = None
             db.commit()
-            return [
-                "Let's personalize your profile. What is your Sun sign? "
-                "Reply with a zodiac sign, or SKIP."
-            ]
+            return ["Pronto para uma nova leitura. Envie a pergunta que você quer explorar."]
 
-        if created:
-            # The first ordinary message is treated as the reading question,
-            # so onboarding does not force extra steps.
-            conversation.state = "AWAITING_CONTEXT"
-            conversation.pending_question = clean[:500]
+        if command in {"perfil", "profile", "/profile", "/perfil"}:
+            conversation.state = "PROFILE_MENU"
+            conversation.pending_question = None
+            conversation.pending_context = None
             db.commit()
-            return [
-                f"Welcome, {user.name}. I saved your question.\n\n"
-                "Add any context that may help me interpret it, or reply SKIP "
-                "if you want the reading based only on the question.\n\n"
-                "Tip: you can type PROFILE at any time before a new reading "
-                "to add Sun, Moon, Rising and MBTI."
-            ]
+            return [self._profile_menu_text()]
 
         state = conversation.state
 
-        if state == "PROFILE_SUN":
-            return self._handle_profile_sign(
-                db=db,
-                user=user,
-                conversation=conversation,
-                clean=clean,
-                field="sun_sign",
-                next_state="PROFILE_MOON",
-                next_prompt="What is your Moon sign? Reply with a zodiac sign, or SKIP.",
-            )
+        if state == "PROFILE_MENU":
+            if command in {"1", "data", "nascimento", "data de nascimento"}:
+                conversation.state = "PROFILE_BIRTH_DATE"
+                db.commit()
+                return [
+                    "Qual é sua data de nascimento? Envie no formato DD/MM/AAAA. "
+                    "Exemplo: 17/08/2002."
+                ]
+            if command in {"2", "hora", "horário", "hora de nascimento"}:
+                conversation.state = "PROFILE_BIRTH_TIME"
+                db.commit()
+                return [
+                    "Qual é sua hora de nascimento? Envie no formato HH:MM. "
+                    "Exemplo: 14:35."
+                ]
+            if command in {"3", "personalidade"}:
+                return [
+                    "O cadastro de personalidade ainda está sendo preparado. "
+                    "Por enquanto você pode cadastrar sua data ou hora de nascimento.",
+                    self._profile_menu_text(),
+                ]
+            return [self._profile_menu_text()]
 
-        if state == "PROFILE_MOON":
-            return self._handle_profile_sign(
-                db=db,
-                user=user,
-                conversation=conversation,
-                clean=clean,
-                field="moon_sign",
-                next_state="PROFILE_RISING",
-                next_prompt="What is your Rising sign? Reply with a zodiac sign, or SKIP.",
-            )
+        if state == "PROFILE_BIRTH_DATE":
+            birth_date = self._parse_birth_date(clean)
+            if birth_date is None:
+                return [
+                    "Não consegui reconhecer essa data. Envie no formato DD/MM/AAAA, "
+                    "por exemplo 17/08/2002."
+                ]
+            if birth_date > date.today():
+                return ["A data de nascimento não pode estar no futuro. Tente novamente."]
 
-        if state == "PROFILE_RISING":
-            return self._handle_profile_sign(
-                db=db,
-                user=user,
-                conversation=conversation,
-                clean=clean,
-                field="rising_sign",
-                next_state="PROFILE_MBTI",
-                next_prompt="What is your MBTI type? Example: INFJ. Reply SKIP if unknown.",
-            )
+            zodiac_sign, zodiac_description = zodiac_for_birth_date(birth_date)
+            arcana = calculate_personal_arcana(user.name, birth_date)
 
-        if state == "PROFILE_MBTI":
-            if command == "skip":
-                user.profile.mbti = None
-            else:
-                mbti = clean.upper()
-                if mbti not in VALID_MBTI:
-                    return [
-                        "I couldn't recognize that MBTI type. "
-                        "Send one of the 16 types (for example INTP), or SKIP."
-                    ]
-                user.profile.mbti = mbti
+            user.profile.birth_date = birth_date
+            user.profile.zodiac_sign = zodiac_sign
+            # Keep the existing sun_sign field in sync for the AI profile layer.
+            user.profile.sun_sign = zodiac_sign
+            user.profile.personal_number = arcana.personal_number
+            user.profile.personal_arcana_number = arcana.personal_number
+            user.profile.personal_arcana_name = arcana.personal_arcana_name
+            user.profile.year_arcana_number = arcana.year_arcana_number
+            user.profile.year_arcana_name = arcana.year_arcana_name
+            user.profile.year_arcana_reference_year = arcana.reference_year
+            conversation.state = "AWAITING_QUESTION"
+            db.commit()
 
+            return [
+                f"♈ Seu signo é {zodiac_sign}.\n\n{zodiac_description}",
+                (
+                    f"🔮 Com base no seu nome e na sua data de nascimento, "
+                    f"seu número pessoal é {arcana.personal_number}.\n\n"
+                    f"Seu Arcano Pessoal é {arcana.personal_arcana_name}.\n"
+                    f"{arcana.personal_arcana_description}\n\n"
+                    f"Para {arcana.reference_year}, seu Arcano do Ano é "
+                    f"{arcana.year_arcana_name} ({arcana.year_arcana_number}).\n"
+                    f"{arcana.year_arcana_description}"
+                ),
+            ]
+
+        if state == "PROFILE_BIRTH_TIME":
+            birth_time = self._parse_birth_time(clean)
+            if birth_time is None:
+                return [
+                    "Não consegui reconhecer esse horário. Envie no formato HH:MM, "
+                    "por exemplo 14:35."
+                ]
+            user.profile.birth_time = birth_time
             conversation.state = "AWAITING_QUESTION"
             db.commit()
             return [
-                "Profile saved. Now send me the question you want to explore."
+                f"Hora de nascimento salva: {birth_time.strftime('%H:%M')}."
             ]
 
         if state == "AWAITING_CONTEXT":
-            conversation.pending_context = None if command == "skip" else clean[:1000]
+            conversation.pending_context = None if command in {"skip", "pular"} else clean[:1000]
             conversation.state = "AWAITING_SPREAD"
             db.commit()
             return [self._spread_prompt()]
@@ -162,15 +200,9 @@ class WhatsAppConversationService:
             if not question:
                 conversation.state = "AWAITING_QUESTION"
                 db.commit()
-                return [
-                    "I lost the pending question, so I reset the flow. "
-                    "Please send your question again."
-                ]
+                return ["Perdi a pergunta pendente. Envie sua pergunta novamente."]
 
             context = conversation.pending_context
-
-            # Reset now so a later provider failure does not leave the chat
-            # stuck in AWAITING_SPREAD.
             conversation.state = "AWAITING_QUESTION"
             conversation.pending_question = None
             conversation.pending_context = None
@@ -185,94 +217,84 @@ class WhatsAppConversationService:
                     context=context,
                     allow_reversed=True,
                 )
-            except (AIConfigurationError, AIProviderError) as exc:
+            except (AIConfigurationError, AIProviderError):
                 return [
-                    "Your cards were drawn and safely saved, but the AI "
-                    "interpretation failed. You can retry this reading later. "
-                    f"Reading ID: {self._latest_failed_reading_id(db, user.id)}"
+                    "Suas cartas foram sorteadas e salvas, mas a interpretação da IA "
+                    "falhou. Esta leitura poderá ser repetida sem sortear novas cartas. "
+                    f"ID da leitura: {self._latest_failed_reading_id(db, user.id)}"
                 ]
             except InvalidSpreadError:
-                return [
-                    "That spread is temporarily unavailable. "
-                    "Send your question again to start over."
-                ]
+                return ["Essa tiragem está indisponível no momento. Envie sua pergunta novamente."]
 
             return self._format_reading(reading)
 
-        # Default state: treat text as a new question.
+        # Default READY state: ordinary text starts a reading.
         conversation.pending_question = clean[:500]
         conversation.pending_context = None
         conversation.state = "AWAITING_CONTEXT"
         db.commit()
-
         return [
-            "Got it. Now add any context that may help the reading, "
-            "or reply SKIP."
+            "Entendi. Agora acrescente qualquer contexto que possa ajudar na leitura, "
+            "ou responda PULAR se quiser seguir apenas com a pergunta."
         ]
 
     @staticmethod
-    def _handle_profile_sign(
-        *,
-        db: Session,
-        user,
-        conversation,
-        clean: str,
-        field: str,
-        next_state: str,
-        next_prompt: str,
-    ) -> list[str]:
-        if clean.lower() == "skip":
-            value = None
-        else:
-            value = ZODIAC_SIGNS.get(clean.upper())
-            if value is None:
-                return [
-                    "I couldn't recognize that zodiac sign. "
-                    "Send a sign such as Scorpio or Pisces, or reply SKIP."
-                ]
+    def _parse_birth_date(value: str) -> date | None:
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value.strip(), fmt).date()
+            except ValueError:
+                continue
+        return None
 
-        setattr(user.profile, field, value)
-        conversation.state = next_state
-        db.commit()
-        return [next_prompt]
+    @staticmethod
+    def _parse_birth_time(value: str):
+        try:
+            return datetime.strptime(value.strip(), "%H:%M").time()
+        except ValueError:
+            return None
 
     @staticmethod
     def _parse_spread(text: str) -> str | None:
         value = text.strip().upper()
-
         if value in SPREAD_OPTIONS:
             return SPREAD_OPTIONS[value]
-
         valid_codes = set(SPREAD_OPTIONS.values())
-        if value in valid_codes:
-            return value
+        return value if value in valid_codes else None
 
-        return None
+    @staticmethod
+    def _profile_menu_text() -> str:
+        return (
+            "Você pode complementar seu perfil com:\n\n"
+            "1 — Data de nascimento\n"
+            "2 — Hora de nascimento\n"
+            "3 — Personalidade (em breve)\n\n"
+            "Envie o número da informação que deseja cadastrar."
+        )
 
     @staticmethod
     def _spread_prompt() -> str:
         return (
-            "Choose the spread:\n"
-            "1 — Current Situation / Dynamic / Tendency\n"
-            "2 — Past / Present / Future\n"
-            "3 — Self / Other / Relationship\n\n"
-            "Reply with 1, 2 or 3."
+            "Escolha a tiragem:\n"
+            "1 — Situação atual / Dinâmica / Tendência\n"
+            "2 — Passado / Presente / Futuro\n"
+            "3 — Você / Outra pessoa / Relação\n\n"
+            "Responda com 1, 2 ou 3."
         )
 
     @staticmethod
     def _help_text() -> str:
         return (
-            "Commands:\n"
-            "PROFILE — add or update Sun, Moon, Rising and MBTI\n"
-            "NEW — start a new reading\n"
-            "CANCEL — cancel the current flow\n"
-            "HELP — show this message\n\n"
-            "To begin, simply send your tarot question."
+            "Comandos disponíveis:\n\n"
+            "PERFIL — cadastrar ou atualizar informações pessoais\n"
+            "NOVA — iniciar uma nova leitura\n"
+            "CANCELAR — cancelar o fluxo atual\n"
+            "AJUDA — mostrar estes comandos\n\n"
+            "Para começar uma leitura, basta enviar sua pergunta."
         )
 
     @staticmethod
     def _latest_failed_reading_id(db: Session, user_id: int) -> str:
-        # Avoid adding another repository API just for the user-facing error.
         from sqlalchemy import select
         from app.persistence.models import ReadingEntity
 
@@ -290,24 +312,16 @@ class WhatsAppConversationService:
     @staticmethod
     def _format_reading(reading) -> list[str]:
         drawn = reading_persistence_service.reconstruct_drawn_cards(reading)
-
         cards = "\n".join(
-            (
-                f"{item.position.index}. {item.position.name}: "
-                f"{item.card.name} ({item.orientation.value.title()})"
-            )
+            f"{item.position.index}. {item.position.name}: {item.card.name} ({item.orientation.value.title()})"
             for item in drawn
         )
-
         return [
-            f"Reading #{reading.id}\n\nYour cards:\n{cards}",
-            f"Overall narrative\n\n{reading.narrative or ''}",
-            f"Card-by-card interpretation\n\n{reading.card_analysis or ''}",
-            f"Final synthesis\n\n{reading.synthesis or ''}",
-            (
-                "Your reading has been saved. "
-                "Send another question whenever you want a new reading."
-            ),
+            f"Leitura #{reading.id}\n\nSuas cartas:\n{cards}",
+            f"Narrativa geral\n\n{reading.narrative or ''}",
+            f"Interpretação carta a carta\n\n{reading.card_analysis or ''}",
+            f"Síntese final\n\n{reading.synthesis or ''}",
+            "Sua leitura foi salva. Envie outra pergunta quando quiser começar uma nova.",
         ]
 
 
