@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.ai.provider import AIConfigurationError, AIProviderError
 from app.ai.service import UserSymbolicProfile, tarot_interpretation_service
 from app.persistence.models import ReadingEntity
+from app.tarot.mystic_intuition_store import mystic_intuition_store
 from app.tarot.persistence_service import reading_persistence_service
 from app.tarot.service import tarot_draw_service
 from app.users.service import user_service
@@ -51,6 +52,7 @@ class TarotReadingFlow:
         )
 
         profile = UserSymbolicProfile.from_snapshot(persisted.profile_snapshot)
+        intuitions = mystic_intuition_store.get(db, persisted.id)
 
         try:
             interpretation = tarot_interpretation_service.interpret(
@@ -59,6 +61,7 @@ class TarotReadingFlow:
                 spread=spread,
                 drawn_cards=drawn,
                 profile=profile,
+                mystic_intuitions=intuitions,
             )
         except (AIConfigurationError, AIProviderError) as exc:
             reading_persistence_service.mark_failed(
