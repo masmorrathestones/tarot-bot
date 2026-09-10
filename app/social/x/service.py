@@ -24,6 +24,9 @@ class XScheduleService:
         text: str,
         scheduled_at: datetime,
         language: str | None = None,
+        media_path: str | None = None,
+        parent_source_key: str | None = None,
+        source_key: str | None = None,
     ) -> ScheduledXPostEntity:
         if scheduled_at.utcoffset() is None:
             raise ValueError("scheduled_at must include a timezone offset.")
@@ -31,9 +34,22 @@ class XScheduleService:
         if not normalized_text:
             raise ValueError("Post text cannot be empty.")
 
+        normalized_parent = parent_source_key.strip() if parent_source_key else None
+        if normalized_parent:
+            parent = db.scalar(
+                select(ScheduledXPostEntity).where(
+                    ScheduledXPostEntity.source_key == normalized_parent
+                )
+            )
+            if parent is None:
+                raise ValueError("parent_source_key does not reference a scheduled post.")
+
         row = ScheduledXPostEntity(
             text=normalized_text,
             language=(language.strip().lower() if language else None),
+            source_key=(source_key.strip() if source_key else None),
+            media_path=(media_path.strip() if media_path else None),
+            parent_source_key=normalized_parent,
             scheduled_at=scheduled_at.astimezone(timezone.utc),
             status="PENDING",
         )

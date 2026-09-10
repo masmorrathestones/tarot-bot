@@ -15,13 +15,7 @@ CAMPAIGN_FILE = Path(__file__).resolve().parent / "campaigns" / "latest.json"
 
 
 def import_latest_campaign() -> int:
-    """Import the Git-managed campaign once, idempotently.
-
-    Each post receives a stable source_key (`campaign_id:post_key`). That makes
-    deploys/restarts safe: an already imported campaign is never scheduled twice.
-    When no explicit start_date is provided, the campaign starts on the next
-    calendar day in its configured timezone after the first deployment.
-    """
+    """Import the Git-managed campaign once, idempotently."""
     if not CAMPAIGN_FILE.exists():
         return 0
 
@@ -44,13 +38,19 @@ def import_latest_campaign() -> int:
     if not isinstance(posts, list):
         raise ValueError("X campaign posts must be a list.")
 
+    post_keys: set[str] = set()
+    for index, item in enumerate(posts, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"Invalid campaign post at index {index}.")
+        post_key = str(item.get("key") or index).strip()
+        if post_key in post_keys:
+            raise ValueError(f"Duplicate campaign post key: {post_key}")
+        post_keys.add(post_key)
+
     db = SessionLocal()
     inserted = 0
     try:
         for index, item in enumerate(posts, start=1):
-            if not isinstance(item, dict):
-                raise ValueError(f"Invalid campaign post at index {index}.")
-
             post_key = str(item.get("key") or index).strip()
             source_key = f"{campaign_id}:{post_key}"[:160]
             if db.scalar(
@@ -76,11 +76,24 @@ def import_latest_campaign() -> int:
                 tzinfo=tz,
             )
 
+            reply_to = str(item.get("reply_to") or "").strip()
+            parent_source_key = None
+            if reply_to:
+                if reply_to not in post_keys:
+                    raise ValueError(
+                        f"Campaign post {post_key} references unknown parent {reply_to}."
+                    )
+                parent_source_key = f"{campaign_id}:{reply_to}"[:160]
+
+            media_path = str(item.get("media_path") or "").strip() or None
+
             db.add(
                 ScheduledXPostEntity(
                     text=text_value,
                     language=(str(item.get("language") or "").strip().lower() or None),
                     source_key=source_key,
+                    media_path=media_path,
+                    parent_source_key=parent_source_key,
                     scheduled_at=local_dt.astimezone(timezone.utc),
                     status="PENDING",
                 )
