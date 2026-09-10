@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.database.session import SessionLocal
+from app.social.x.campaign_loader import import_latest_campaign
 from app.social.x.client import x_client
 from app.social.x.config import get_x_settings
 from app.social.x.models import ScheduledXPostEntity
@@ -15,6 +16,16 @@ async def x_scheduler_loop() -> None:
     settings = get_x_settings()
     if not settings.scheduler_enabled:
         return
+
+    # Git-managed campaigns are imported once at startup. Stable source keys
+    # make this safe across deploys and process restarts.
+    try:
+        await asyncio.to_thread(import_latest_campaign)
+    except Exception:
+        # A malformed campaign must not take the web process down. It can be
+        # fixed in Git and imported on the next deploy/restart.
+        pass
+
     while True:
         try:
             await asyncio.to_thread(process_due_x_posts)

@@ -1,0 +1,133 @@
+{
+  "campaign_id": "holomancy-seed-2026-09-10-v1",
+  "timezone": "America/Sao_Paulo",
+  "start_date": null,
+  "posts": [
+    {
+      "key": "pt-01",
+      "day_offset": 0,
+      "time": "09:00",
+      "language": "pt",
+      "text": "Se você precisa perguntar ao tarot a mesma coisa 7 vezes até sair a resposta que queria, talvez o problema não esteja nas cartas."
+    },
+    {
+      "key": "en-01",
+      "day_offset": 0,
+      "time": "12:30",
+      "language": "en",
+      "text": "Unpopular opinion: tarot is less useful when you treat every card like a fixed dictionary definition."
+    },
+    {
+      "key": "pt-02",
+      "day_offset": 0,
+      "time": "16:00",
+      "language": "pt",
+      "text": "Hot take: mapa astral não serve pra justificar comportamento ruim. Serve pra entender padrão, não pra terceirizar responsabilidade."
+    },
+    {
+      "key": "es-01",
+      "day_offset": 0,
+      "time": "19:30",
+      "language": "es",
+      "text": "La astrología no debería servir para justificar tu comportamiento. Debería ayudarte a entenderlo."
+    },
+    {
+      "key": "pt-03",
+      "day_offset": 0,
+      "time": "22:00",
+      "language": "pt",
+      "text": "Mercúrio retrógrado virou o ‘culpa do algoritmo’ da astrologia."
+    },
+    {
+      "key": "es-02",
+      "day_offset": 1,
+      "time": "09:00",
+      "language": "es",
+      "text": "Si necesitas preguntar lo mismo al tarot cinco veces hasta obtener el ‘sí’ que querías, ya tienes tu respuesta."
+    },
+    {
+      "key": "pt-04",
+      "day_offset": 1,
+      "time": "12:30",
+      "language": "pt",
+      "text": "Tarot não é um Google espiritual. Às vezes ele responde melhor quando você para de tentar arrancar certeza absoluta dele."
+    },
+    {
+      "key": "en-02",
+      "day_offset": 1,
+      "time": "16:00",
+      "language": "en",
+      "text": "Mercury retrograde has become astrology’s favorite scapegoat."
+    },
+    {
+      "key": "pt-05",
+      "day_offset": 1,
+      "time": "19:30",
+      "language": "pt",
+      "text": "Tem gente que acha astrologia ridícula porque confunde astrologia com horóscopo de revista. É tipo julgar economia por frase de coach financeiro."
+    },
+    {
+      "key": "es-03",
+      "day_offset": 1,
+      "time": "22:00",
+      "language": "es",
+      "text": "No toda conexión intensa es destino. A veces es simplemente apego."
+    },
+    {
+      "key": "pt-06",
+      "day_offset": 2,
+      "time": "10:00",
+      "language": "pt",
+      "text": "Nem toda conexão intensa é ‘alma gêmea’. Às vezes é só duas pessoas emocionalmente desreguladas."
+    },
+    {
+      "key": "en-03",
+      "day_offset": 2,
+      "time": "14:00",
+      "language": "en",
+      "text": "Not every intense connection is a soulmate connection. Sometimes it’s just attachment."
+    },
+    {
+      "key": "pt-07",
+      "day_offset": 2,
+      "time": "18:00",
+      "language": "pt",
+      "text": "O maior erro em leitura de tarot é interpretar carta por carta como se fosse dicionário. O sentido está na relação entre elas."
+    },
+    {
+      "key": "es-04",
+      "day_offset": 2,
+      "time": "21:30",
+      "language": "es",
+      "text": "El tarot funciona mejor cuando lees relaciones entre cartas, no significados aislados."
+    },
+    {
+      "key": "pt-08",
+      "day_offset": 3,
+      "time": "10:00",
+      "language": "pt",
+      "text": "Você não precisa acreditar que os planetas ‘causam’ sua personalidade para achar astrologia simbolicamente interessante."
+    },
+    {
+      "key": "en-04",
+      "day_offset": 3,
+      "time": "14:00",
+      "language": "en",
+      "text": "Spirituality without self-criticism can become narcissism with candles."
+    },
+    {
+      "key": "pt-09",
+      "day_offset": 3,
+      "time": "18:00",
+      "language": "pt",
+      "text": "Espiritualidade sem autocrítica vira só narcisismo com incenso."
+    },
+    {
+      "key": "pt-10",
+      "day_offset": 3,
+      "time": "21:30",
+      "language": "pt",
+      "text": "Se toda leitura que você recebe diz que ‘coisas boas estão vindo’, provavelmente você não está recebendo uma leitura. Está recebendo conforto."
+    }
+  ]
+}
