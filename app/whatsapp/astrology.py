@@ -106,10 +106,14 @@ def _geocode_with_nominatim(client: httpx.Client, query: str, language: str) -> 
 
 def _geocode_with_open_meteo(client: httpx.Client, query: str, language: str) -> BirthPlace | None:
     provider_language = {"pt": "pt", "es": "es"}.get(language, "en")
+    # Open-Meteo's name search is much more reliable when it receives only the
+    # city/place name. Nominatim already gets the complete city/region/country
+    # string, so this fallback intentionally strips comma-separated qualifiers.
+    place_name = query.split(",", 1)[0].strip() or query
     response = client.get(
         "https://geocoding-api.open-meteo.com/v1/search",
         params={
-            "name": query,
+            "name": place_name,
             "count": 1,
             "language": provider_language,
             "format": "json",
@@ -129,12 +133,19 @@ def _geocode_with_open_meteo(client: httpx.Client, query: str, language: str) ->
         str(result.get("admin1") or "").strip(),
         str(result.get("country") or "").strip(),
     ]
-    display_name = ", ".join(part for index, part in enumerate(parts) if part and part not in parts[:index])
+    display_name = ", ".join(
+        part for index, part in enumerate(parts)
+        if part and part not in parts[:index]
+    )
     return BirthPlace(
         display_name=display_name or query,
         latitude=latitude,
         longitude=longitude,
-        timezone=_timezone_for(latitude, longitude, str(result.get("timezone") or "") or None),
+        timezone=_timezone_for(
+            latitude,
+            longitude,
+            str(result.get("timezone") or "") or None,
+        ),
     )
 
 
@@ -160,7 +171,9 @@ def geocode_place(query: str, language: str = "en") -> BirthPlace:
                 provider_errors.append(exc)
 
     if provider_errors and len(provider_errors) == 2:
-        raise BirthPlaceNotFoundError("Location providers were unavailable or could not resolve the place.") from provider_errors[-1]
+        raise BirthPlaceNotFoundError(
+            "Location providers were unavailable or could not resolve the place."
+        ) from provider_errors[-1]
     raise BirthPlaceNotFoundError("Unable to locate that place.")
 
 
