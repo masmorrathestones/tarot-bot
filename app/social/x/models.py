@@ -15,6 +15,8 @@ class ScheduledXPostEntity(Base):
     source_key: Mapped[str | None] = mapped_column(
         String(160), nullable=True, unique=True, index=True
     )
+    media_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    parent_source_key: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
     scheduled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )

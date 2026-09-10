@@ -47,6 +47,9 @@ def schedule_x_post(
             text=request.text,
             scheduled_at=request.scheduled_at,
             language=request.language,
+            media_path=request.media_path,
+            parent_source_key=request.parent_source_key,
+            source_key=request.source_key,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -3,8 +3,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import mimetypes
 import secrets
 import time
+from pathlib import Path
 from urllib.parse import quote
 
 import httpx
@@ -18,6 +20,10 @@ class XConfigurationError(RuntimeError):
 
 class XProviderError(RuntimeError):
     pass
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+MEDIA_UPLOAD_URL = "https://upload.x.com/1.1/media/upload.json"
 
 
 def _pct(value: str) -> str:
@@ -52,24 +58,91 @@ def _oauth_header(*, method: str, url: str, api_key: str, api_secret: str, acces
     )
 
 
+def _posting_auth(url: str) -> str:
+    settings = get_x_settings()
+    if not settings.posting_configured:
+        raise XConfigurationError(
+            "X posting credentials are incomplete. Configure X_API_KEY, "
+            "X_API_SECRET, X_ACCESS_TOKEN and X_ACCESS_TOKEN_SECRET."
+        )
+    return _oauth_header(
+        method="POST",
+        url=url,
+        api_key=str(settings.api_key),
+        api_secret=str(settings.api_secret),
+        access_token=str(settings.access_token),
+        access_token_secret=str(settings.access_token_secret),
+    )
+
+
+def _resolve_media_path(media_path: str) -> Path:
+    candidate = (PROJECT_ROOT / media_path).resolve()
+    try:
+        candidate.relative_to(PROJECT_ROOT)
+    except ValueError as exc:
+        raise XConfigurationError("media_path must stay inside the project directory.") from exc
+    if not candidate.is_file():
+        raise XConfigurationError(f"Media file does not exist: {media_path}")
+    return candidate
+
+
 class XClient:
-    def create_post(self, text: str) -> str:
-        settings = get_x_settings()
-        if not settings.posting_configured:
-            raise XConfigurationError(
-                "X posting credentials are incomplete. Configure X_API_KEY, "
-                "X_API_SECRET, X_ACCESS_TOKEN and X_ACCESS_TOKEN_SECRET."
+    def upload_image(self, media_path: str) -> str:
+        path = _resolve_media_path(media_path)
+        if path.stat().st_size > 5 * 1024 * 1024:
+            raise XConfigurationError("X image uploads must be 5 MB or smaller.")
+
+        authorization = _posting_auth(MEDIA_UPLOAD_URL)
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        try:
+            with path.open("rb") as media_file:
+                response = httpx.post(
+                    MEDIA_UPLOAD_URL,
+                    headers={"Authorization": authorization},
+                    files={"media": (path.name, media_file, content_type)},
+                    timeout=60.0,
+                )
+        except httpx.HTTPError as exc:
+            raise XProviderError(f"X media upload failed: {exc}") from exc
+
+        if response.status_code not in (200, 201, 202):
+            detail = response.text.strip()
+            raise XProviderError(
+                f"X media upload returned HTTP {response.status_code}: {detail[:1500]}"
             )
 
+        try:
+            payload = response.json()
+            media_id = str(
+                payload.get("media_id_string")
+                or payload.get("media_id")
+                or (payload.get("data") or {}).get("id")
+                or ""
+            ).strip()
+        except (ValueError, AttributeError) as exc:
+            raise XProviderError("X media upload returned invalid JSON.") from exc
+        if not media_id:
+            raise XProviderError("X media upload response did not include a media id.")
+        return media_id
+
+    def create_post(
+        self,
+        text: str,
+        *,
+        media_path: str | None = None,
+        reply_to_post_id: str | None = None,
+    ) -> str:
+        settings = get_x_settings()
         url = f"{settings.api_base_url}/2/tweets"
-        authorization = _oauth_header(
-            method="POST",
-            url=url,
-            api_key=str(settings.api_key),
-            api_secret=str(settings.api_secret),
-            access_token=str(settings.access_token),
-            access_token_secret=str(settings.access_token_secret),
-        )
+        authorization = _posting_auth(url)
+
+        body: dict[str, object] = {"text": text}
+        if media_path:
+            media_id = self.upload_image(media_path)
+            body["media"] = {"media_ids": [media_id]}
+        if reply_to_post_id:
+            body["reply"] = {"in_reply_to_tweet_id": str(reply_to_post_id)}
+
         try:
             response = httpx.post(
                 url,
@@ -77,7 +150,7 @@ class XClient:
                     "Authorization": authorization,
                     "Content-Type": "application/json",
                 },
-                json={"text": text},
+                json=body,
                 timeout=20.0,
             )
         except httpx.HTTPError as exc:

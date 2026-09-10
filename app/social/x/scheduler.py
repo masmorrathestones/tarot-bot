@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import exists, or_, select
 
 from app.database.session import SessionLocal
 from app.social.x.campaign_loader import import_latest_campaign
@@ -17,20 +17,15 @@ async def x_scheduler_loop() -> None:
     if not settings.scheduler_enabled:
         return
 
-    # Git-managed campaigns are imported once at startup. Stable source keys
-    # make this safe across deploys and process restarts.
     try:
         await asyncio.to_thread(import_latest_campaign)
     except Exception:
-        # A malformed campaign must not take the web process down. It can be
-        # fixed in Git and imported on the next deploy/restart.
         pass
 
     while True:
         try:
             await asyncio.to_thread(process_due_x_posts)
         except Exception:
-            # Never let one scheduler iteration bring down the web process.
             pass
         await asyncio.sleep(settings.scheduler_interval_seconds)
 
@@ -40,12 +35,24 @@ def process_due_x_posts() -> int:
     sent = 0
     try:
         now = datetime.now(timezone.utc)
+        parent = ScheduledXPostEntity.__table__.alias("thread_parent")
+        parent_is_sent = exists(
+            select(parent.c.id).where(
+                parent.c.source_key == ScheduledXPostEntity.parent_source_key,
+                parent.c.status == "SENT",
+                parent.c.x_post_id.is_not(None),
+            )
+        )
         due = list(
             db.scalars(
                 select(ScheduledXPostEntity)
                 .where(
                     ScheduledXPostEntity.status == "PENDING",
                     ScheduledXPostEntity.scheduled_at <= now,
+                    or_(
+                        ScheduledXPostEntity.parent_source_key.is_(None),
+                        parent_is_sent,
+                    ),
                 )
                 .order_by(ScheduledXPostEntity.scheduled_at, ScheduledXPostEntity.id)
                 .limit(10)
@@ -53,8 +60,6 @@ def process_due_x_posts() -> int:
             ).all()
         )
 
-        # Claim rows before making external requests so concurrent workers do not
-        # publish the same post twice.
         for row in due:
             row.status = "PROCESSING"
             row.last_attempt_at = now
@@ -66,7 +71,24 @@ def process_due_x_posts() -> int:
             if row is None or row.status != "PROCESSING":
                 continue
             try:
-                x_post_id = x_client.create_post(row.text)
+                reply_to_post_id = None
+                if row.parent_source_key:
+                    parent_row = db.scalar(
+                        select(ScheduledXPostEntity).where(
+                            ScheduledXPostEntity.source_key == row.parent_source_key
+                        )
+                    )
+                    if parent_row is None or parent_row.status != "SENT" or not parent_row.x_post_id:
+                        raise RuntimeError(
+                            f"Thread parent is not ready: {row.parent_source_key}"
+                        )
+                    reply_to_post_id = parent_row.x_post_id
+
+                x_post_id = x_client.create_post(
+                    row.text,
+                    media_path=row.media_path,
+                    reply_to_post_id=reply_to_post_id,
+                )
                 finished_at = datetime.now(timezone.utc)
                 row.status = "SENT"
                 row.x_post_id = x_post_id
@@ -75,9 +97,6 @@ def process_due_x_posts() -> int:
                 db.commit()
                 sent += 1
             except Exception as exc:
-                # Do not auto-retry: if X accepted the post but the response was
-                # lost, an automatic retry could create a duplicate. Failed jobs
-                # can be retried explicitly through the management endpoint.
                 row.status = "FAILED"
                 row.error_message = str(exc)[:2000]
                 db.commit()
