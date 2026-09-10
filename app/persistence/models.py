@@ -219,6 +219,9 @@ class TarotPaymentEntity(Base):
     provider_session_id: Mapped[str] = mapped_column(
         String(255), nullable=False, unique=True, index=True
     )
+    checkout_choice_token: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
     checkout_url: Mapped[str] = mapped_column(Text, nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="usd")
