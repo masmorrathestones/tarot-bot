@@ -55,41 +55,118 @@ def zodiac_position(longitude: float) -> dict:
     }
 
 
-def geocode_birth_place(query: str, language: str = "en") -> BirthPlace:
-    accept_language = {"pt": "pt-BR,pt;q=0.9", "es": "es,es-ES;q=0.9"}.get(language, "en,en-US;q=0.9")
-    with httpx.Client(timeout=15.0, follow_redirects=True) as client:
-        response = client.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": query,
-                "format": "jsonv2",
-                "limit": 1,
-                "addressdetails": 1,
-            },
-            headers={
-                "User-Agent": "tarot-bot/1.0 (natal-chart geocoder)",
-                "Accept-Language": accept_language,
-            },
-        )
-        response.raise_for_status()
-        results = response.json()
+def _timezone_for(latitude: float, longitude: float, provider_timezone: str | None = None) -> str:
+    if provider_timezone:
+        try:
+            ZoneInfo(provider_timezone)
+            return provider_timezone
+        except Exception:
+            pass
 
+    timezone_name = TimezoneFinder().timezone_at(lat=latitude, lng=longitude)
+    if not timezone_name:
+        raise BirthTimezoneNotFoundError("Unable to determine the timezone for that location.")
+    return timezone_name
+
+
+def _geocode_with_nominatim(client: httpx.Client, query: str, language: str) -> BirthPlace | None:
+    accept_language = {
+        "pt": "pt-BR,pt;q=0.9",
+        "es": "es,es-ES;q=0.9",
+    }.get(language, "en,en-US;q=0.9")
+
+    response = client.get(
+        "https://nominatim.openstreetmap.org/search",
+        params={
+            "q": query,
+            "format": "jsonv2",
+            "limit": 1,
+            "addressdetails": 1,
+        },
+        headers={
+            "User-Agent": "Holomancy-TarotBot/1.0",
+            "Accept-Language": accept_language,
+        },
+    )
+    response.raise_for_status()
+    results = response.json()
     if not results:
-        raise BirthPlaceNotFoundError("Unable to locate that birthplace.")
+        return None
 
     result = results[0]
     latitude = float(result["lat"])
     longitude = float(result["lon"])
-    timezone_name = TimezoneFinder().timezone_at(lat=latitude, lng=longitude)
-    if not timezone_name:
-        raise BirthTimezoneNotFoundError("Unable to determine the timezone for that location.")
-
     return BirthPlace(
         display_name=str(result.get("display_name") or query),
         latitude=latitude,
         longitude=longitude,
-        timezone=timezone_name,
+        timezone=_timezone_for(latitude, longitude),
     )
+
+
+def _geocode_with_open_meteo(client: httpx.Client, query: str, language: str) -> BirthPlace | None:
+    provider_language = {"pt": "pt", "es": "es"}.get(language, "en")
+    response = client.get(
+        "https://geocoding-api.open-meteo.com/v1/search",
+        params={
+            "name": query,
+            "count": 1,
+            "language": provider_language,
+            "format": "json",
+        },
+        headers={"User-Agent": "Holomancy-TarotBot/1.0"},
+    )
+    response.raise_for_status()
+    results = response.json().get("results") or []
+    if not results:
+        return None
+
+    result = results[0]
+    latitude = float(result["latitude"])
+    longitude = float(result["longitude"])
+    parts = [
+        str(result.get("name") or "").strip(),
+        str(result.get("admin1") or "").strip(),
+        str(result.get("country") or "").strip(),
+    ]
+    display_name = ", ".join(part for index, part in enumerate(parts) if part and part not in parts[:index])
+    return BirthPlace(
+        display_name=display_name or query,
+        latitude=latitude,
+        longitude=longitude,
+        timezone=_timezone_for(latitude, longitude, str(result.get("timezone") or "") or None),
+    )
+
+
+def geocode_place(query: str, language: str = "en") -> BirthPlace:
+    """Resolve a city/place using two independent providers.
+
+    Nominatim remains the primary provider. Open-Meteo is used as a fallback so
+    a temporary block/rate-limit/provider failure does not trap the WhatsApp
+    conversation in the location prompt.
+    """
+    clean_query = query.strip()
+    if len(clean_query) < 2:
+        raise BirthPlaceNotFoundError("Location query is too short.")
+
+    provider_errors: list[Exception] = []
+    with httpx.Client(timeout=12.0, follow_redirects=True) as client:
+        for resolver in (_geocode_with_nominatim, _geocode_with_open_meteo):
+            try:
+                result = resolver(client, clean_query, language)
+                if result is not None:
+                    return result
+            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                provider_errors.append(exc)
+
+    if provider_errors and len(provider_errors) == 2:
+        raise BirthPlaceNotFoundError("Location providers were unavailable or could not resolve the place.") from provider_errors[-1]
+    raise BirthPlaceNotFoundError("Unable to locate that place.")
+
+
+def geocode_birth_place(query: str, language: str = "en") -> BirthPlace:
+    """Backward-compatible alias used by the natal-chart flow."""
+    return geocode_place(query, language=language)
 
 
 def calculate_natal_chart(
