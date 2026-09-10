@@ -57,6 +57,13 @@ class UserProfileEntity(Base):
     birth_longitude: Mapped[Optional[float]] = mapped_column(Float())
     birth_timezone: Mapped[Optional[str]] = mapped_column(String(80))
     natal_chart: Mapped[Optional[dict]] = mapped_column(JSON)
+    current_place: Mapped[Optional[str]] = mapped_column(String(250))
+    current_latitude: Mapped[Optional[float]] = mapped_column(Float())
+    current_longitude: Mapped[Optional[float]] = mapped_column(Float())
+    current_timezone: Mapped[Optional[str]] = mapped_column(String(80))
+    current_location_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
     zodiac_sign: Mapped[Optional[str]] = mapped_column(String(30))
     personal_number: Mapped[Optional[int]] = mapped_column(Integer)
     personal_arcana_number: Mapped[Optional[int]] = mapped_column(Integer)

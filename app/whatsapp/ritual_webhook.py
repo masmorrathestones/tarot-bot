@@ -6,6 +6,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.database.session import SessionLocal, get_db
+from app.plans.whatsapp import plan_whatsapp_service
 from app.whatsapp.config import get_whatsapp_settings
 from app.whatsapp.i18n import normalize_language, t
 from app.whatsapp.repository import whatsapp_repository
@@ -98,7 +99,7 @@ def simulate_text_message(
     request: TestWhatsAppMessageRequest,
     db: Session = Depends(get_db),
 ):
-    outgoing = ritual_whatsapp_conversation_service.handle_text(
+    outgoing = _handle_text(
         db=db,
         from_number=request.from_number,
         display_name=request.display_name,
@@ -123,6 +124,7 @@ def simulate_text_message(
                 from_number=request.from_number,
                 reading_id=int(message["reading_id"]),
             )
+            follow_up = _decorate_navigation_messages(db, request.from_number, follow_up)
             spread_message, remaining = _combine_spread_with_narrative(pending_spread_image, follow_up)
             if spread_message is not None:
                 expanded.append(spread_message)
@@ -136,6 +138,56 @@ def simulate_text_message(
         expanded.append(pending_spread_image)
 
     return TestWhatsAppMessageResponse(outgoing_messages=expanded)
+
+
+def _handle_text(
+    *,
+    db: Session,
+    from_number: str,
+    display_name: str | None,
+    text: str,
+) -> list[str | dict]:
+    conversation, _ = whatsapp_repository.get_or_create_conversation_by_number(
+        db,
+        whatsapp_number=from_number,
+    )
+    if plan_whatsapp_service.handles(state=conversation.state, text=text):
+        plan_messages = plan_whatsapp_service.handle_text(
+            db=db,
+            from_number=from_number,
+            display_name=display_name,
+            text=text,
+        )
+        if plan_messages is not None:
+            return _decorate_navigation_messages(db, from_number, plan_messages)
+
+    messages = ritual_whatsapp_conversation_service.handle_text(
+        db=db,
+        from_number=from_number,
+        display_name=display_name,
+        text=text,
+    )
+    return _decorate_navigation_messages(db, from_number, messages)
+
+
+def _decorate_navigation_messages(
+    db: Session,
+    from_number: str,
+    messages: list[str | dict],
+) -> list[str | dict]:
+    language = _conversation_language(db, from_number)
+    main_menu = t(language, "main_menu")
+    profile_menu = t(language, "profile_menu")
+    decorated: list[str | dict] = []
+    for message in messages:
+        if isinstance(message, str) and message == main_menu:
+            decorated.append(plan_whatsapp_service.decorate_menu(message, language))
+        elif isinstance(message, str) and profile_menu in message:
+            decorated_profile = plan_whatsapp_service.decorate_profile_menu(profile_menu, language)
+            decorated.append(message.replace(profile_menu, decorated_profile, 1))
+        else:
+            decorated.append(message)
+    return decorated
 
 
 def _process_registered_message(
@@ -157,7 +209,7 @@ def _process_registered_message(
                 "es": "Por ahora, solo puedo leer mensajes de texto. Usa los comandos del menú como texto.",
             }[language]]
         else:
-            outgoing = ritual_whatsapp_conversation_service.handle_text(
+            outgoing = _handle_text(
                 db=db,
                 from_number=from_number,
                 display_name=display_name,
@@ -204,6 +256,7 @@ def _dispatch_outgoing(*, db: Session, to: str, messages: list[str | dict]) -> N
                 from_number=to,
                 reading_id=int(message["reading_id"]),
             )
+            follow_up = _decorate_navigation_messages(db, to, follow_up)
             spread_message, remaining = _combine_spread_with_narrative(pending_spread_image, follow_up)
             _dispatch_analysis_results(
                 db=db,

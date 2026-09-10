@@ -15,6 +15,7 @@ from app.payments.service import (
     tarot_payment_service,
 )
 from app.persistence.models import WhatsAppConversationEntity
+from app.plans.router import handle_plan_stripe_event
 from app.whatsapp.i18n import normalize_language
 from app.whatsapp.ritual_conversation import ritual_whatsapp_conversation_service
 from app.whatsapp.ritual_state import whatsapp_tarot_flow_store
@@ -242,14 +243,22 @@ async def stripe_webhook(
         raise HTTPException(status_code=400, detail="Invalid Stripe webhook.") from exc
 
     event_data = event.to_dict()
-    event_type = event_data.get("type")
-    session = (event_data.get("data") or {}).get("object") or {}
-    session_id = str(session.get("id") or "")
+    event_type = str(event_data.get("type") or "")
+    obj = (event_data.get("data") or {}).get("object") or {}
+
+    # The same signed Stripe endpoint handles both per-reading payments and
+    # the Daily Tarot + Weekly Astrology plan. Plan handlers return None for
+    # unrelated events, preserving the existing Tarot payment flow.
+    plan_status = handle_plan_stripe_event(db=db, event_type=event_type, obj=obj)
+    if plan_status is not None:
+        return {"status": plan_status}
+
+    session_id = str(obj.get("id") or "")
     if not session_id:
         return {"status": "ignored"}
 
     if event_type in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
-        if event_type == "checkout.session.completed" and session.get("payment_status") != "paid":
+        if event_type == "checkout.session.completed" and obj.get("payment_status") != "paid":
             return {"status": "awaiting_payment"}
 
         payment, changed = tarot_payment_service.mark_paid(
