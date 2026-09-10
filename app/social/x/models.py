@@ -12,6 +12,9 @@ class ScheduledXPostEntity(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     language: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    source_key: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, unique=True, index=True
+    )
     scheduled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
