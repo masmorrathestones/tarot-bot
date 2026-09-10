@@ -321,18 +321,17 @@ class DailyWeeklyPlanService:
         if daily_time is None:
             return None
         current = now or datetime.now(timezone.utc)
-        tz = ZoneInfo(timezone_name)
-        local_now = current.astimezone(tz)
-        candidate_local = local_now.replace(
-            hour=daily_time.hour, minute=daily_time.minute, second=0, microsecond=0
-        )
-        if candidate_local <= local_now:
-            candidate_local += timedelta(days=1)
-        candidate = candidate_local.astimezone(timezone.utc)
+        minimum = current
         if last_sent_at is not None:
-            minimum = last_sent_at + timedelta(hours=24)
-            if candidate < minimum:
-                candidate = minimum
+            minimum = max(minimum, last_sent_at + timedelta(hours=24))
+
+        tz = ZoneInfo(timezone_name)
+        local_minimum = minimum.astimezone(tz)
+        candidate_local = datetime.combine(local_minimum.date(), daily_time, tzinfo=tz)
+        candidate = candidate_local.astimezone(timezone.utc)
+        if candidate < minimum:
+            candidate_local += timedelta(days=1)
+            candidate = candidate_local.astimezone(timezone.utc)
         return candidate
 
     @staticmethod
@@ -347,18 +346,19 @@ class DailyWeeklyPlanService:
         if weekday is None or weekly_time is None:
             return None
         current = now or datetime.now(timezone.utc)
-        tz = ZoneInfo(timezone_name)
-        local_now = current.astimezone(tz)
-        days_ahead = (weekday - local_now.weekday()) % 7
-        candidate_date = local_now.date() + timedelta(days=days_ahead)
-        candidate_local = datetime.combine(candidate_date, weekly_time, tzinfo=tz)
-        if candidate_local <= local_now:
-            candidate_local += timedelta(days=7)
-        candidate = candidate_local.astimezone(timezone.utc)
+        minimum = current
         if last_sent_at is not None:
-            minimum = last_sent_at + timedelta(days=7)
-            if candidate < minimum:
-                candidate = minimum
+            minimum = max(minimum, last_sent_at + timedelta(days=7))
+
+        tz = ZoneInfo(timezone_name)
+        local_minimum = minimum.astimezone(tz)
+        days_ahead = (weekday - local_minimum.weekday()) % 7
+        candidate_date = local_minimum.date() + timedelta(days=days_ahead)
+        candidate_local = datetime.combine(candidate_date, weekly_time, tzinfo=tz)
+        candidate = candidate_local.astimezone(timezone.utc)
+        if candidate < minimum:
+            candidate_local += timedelta(days=7)
+            candidate = candidate_local.astimezone(timezone.utc)
         return candidate
 
     @staticmethod
