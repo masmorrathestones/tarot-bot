@@ -15,6 +15,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # 0013 removed the database default after backfilling is_admin. The ORM does
+    # not map that column, so new user INSERTs omit it; keep a safe false default.
+    op.alter_column("users", "is_admin", server_default=sa.false())
+
     op.add_column("user_profiles", sa.Column("current_place", sa.String(length=250), nullable=True))
     op.add_column("user_profiles", sa.Column("current_latitude", sa.Float(), nullable=True))
     op.add_column("user_profiles", sa.Column("current_longitude", sa.Float(), nullable=True))
@@ -89,3 +93,4 @@ def downgrade() -> None:
     op.drop_column("user_profiles", "current_longitude")
     op.drop_column("user_profiles", "current_latitude")
     op.drop_column("user_profiles", "current_place")
+    op.alter_column("users", "is_admin", server_default=None)
