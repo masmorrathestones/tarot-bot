@@ -40,6 +40,16 @@ def map_user(user) -> UserResponse:
             year_arcana_reference_year=(
                 p.year_arcana_reference_year if p else None
             ),
+            profile_analysis=p.profile_analysis if p else None,
+            profile_analysis_summary=(
+                p.profile_analysis_summary if p else None
+            ),
+            profile_analysis_reference_year=(
+                p.profile_analysis_reference_year if p else None
+            ),
+            profile_analysis_created_at=(
+                p.profile_analysis_created_at if p else None
+            ),
         ),
         created_at=user.created_at,
         updated_at=user.updated_at,

@@ -132,7 +132,7 @@ class TarotInterpretationService:
             "PROFILE USAGE RULE:",
             (
                 "Use populated profile information only as secondary symbolic and personal context. "
-                "Do not let astrology, MBTI, numerology, or arcana profile data override the drawn cards, "
+                "Do not let astrology, MBTI, numerology, arcana profile data, or the saved profile-analysis summary override the drawn cards, "
                 "and do not treat any profile system as a factual diagnosis or deterministic prediction."
             ),
             "",
@@ -295,6 +295,8 @@ class TarotInterpretationService:
         add("Year Arcana number", "year_arcana_number")
         add("Year Arcana", "year_arcana_name")
         add("Year Arcana reference year", "year_arcana_reference_year")
+        add("Saved profile analysis reference year", "profile_analysis_reference_year")
+        add("Saved profile analysis summary", "profile_analysis_summary")
 
         natal_chart = data.get("natal_chart")
         if isinstance(natal_chart, dict) and natal_chart:

@@ -1,9 +1,10 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 import httpx
 from sqlalchemy.orm import Session
 
+from app.ai.profile_analysis import profile_analysis_service
 from app.ai.provider import AIConfigurationError, AIProviderError
 from app.tarot.persistence_service import reading_persistence_service
 from app.tarot.reading_flow import InvalidSpreadError, tarot_reading_flow
@@ -181,6 +182,95 @@ class WhatsAppConversationService:
                           "🧠 Vamos fazer um teste de personalidade inspirado no modelo de preferências do MBTI.\n\nSão 20 perguntas A/B. Não existe resposta certa: escolha a opção que melhor descreve você na maior parte do tempo.",
                           "🧠 Hagamos un test de personalidad inspirado en el modelo de preferencias MBTI.\n\nSon 20 preguntas A/B. No hay una respuesta correcta: elige la opción que mejor te describa la mayor parte del tiempo."),
                     self._mbti_question(0, language),
+                ]
+
+            if command in {"4", "analysis", "profile analysis", "análise", "analise", "análise de perfil", "analise de perfil", "análisis", "analisis", "análisis de perfil", "analisis de perfil"}:
+                profile = user.profile
+                if profile is None:
+                    return [
+                        _pick(
+                            language,
+                            "Your profile is not available yet. Complete your profile first.",
+                            "Seu perfil ainda não está disponível. Complete seu perfil primeiro.",
+                            "Tu perfil todavía no está disponible. Completa tu perfil primero.",
+                        ),
+                        self._profile_menu_text(language),
+                    ]
+
+                if profile.profile_analysis:
+                    self._reset_to_menu(conversation)
+                    db.commit()
+                    reference_year = profile.profile_analysis_reference_year or profile.year_arcana_reference_year
+                    return [
+                        _pick(
+                            language,
+                            f"✨ Your saved profile analysis for {reference_year or 'its reference year'}:\n\n{profile.profile_analysis}",
+                            f"✨ Sua análise de perfil salva para {reference_year or 'o ano de referência'}:\n\n{profile.profile_analysis}",
+                            f"✨ Tu análisis de perfil guardado para {reference_year or 'el año de referencia'}:\n\n{profile.profile_analysis}",
+                        ),
+                        _pick(
+                            language,
+                            f"*Saved profile summary*\n{profile.profile_analysis_summary or ''}",
+                            f"*Resumo salvo do perfil*\n{profile.profile_analysis_summary or ''}",
+                            f"*Resumen guardado del perfil*\n{profile.profile_analysis_summary or ''}",
+                        ),
+                        self._main_menu_text(language),
+                    ]
+
+                missing: list[str] = []
+                if not profile.birth_date or not profile.personal_arcana_name or not profile.year_arcana_name:
+                    missing.append(_pick(language, "date of birth", "data de nascimento", "fecha de nacimiento"))
+                if not profile.natal_chart:
+                    missing.append(_pick(language, "complete natal chart", "mapa astral completo", "carta natal completa"))
+                if not profile.mbti:
+                    missing.append(_pick(language, "MBTI personality", "personalidade MBTI", "personalidad MBTI"))
+
+                if missing:
+                    items = ", ".join(missing)
+                    return [
+                        _pick(
+                            language,
+                            f"To create the annual profile analysis, complete these profile items first: {items}.",
+                            f"Para criar a análise anual do perfil, complete primeiro estes itens: {items}.",
+                            f"Para crear el análisis anual del perfil, completa primero estos datos: {items}.",
+                        ),
+                        self._profile_menu_text(language),
+                    ]
+
+                try:
+                    result = profile_analysis_service.analyze(user=user, language=language)
+                except (AIConfigurationError, AIProviderError, ValueError):
+                    return [
+                        _pick(
+                            language,
+                            "I couldn't generate your profile analysis right now. Nothing was saved, so you can try again later.",
+                            "Não consegui gerar sua análise de perfil agora. Nada foi salvo, então você pode tentar novamente mais tarde.",
+                            "No pude generar tu análisis de perfil ahora. No se guardó nada, así que puedes intentarlo de nuevo más tarde.",
+                        ),
+                        self._profile_menu_text(language),
+                    ]
+
+                profile.profile_analysis = result.analysis
+                profile.profile_analysis_summary = result.summary
+                profile.profile_analysis_reference_year = profile.year_arcana_reference_year
+                profile.profile_analysis_created_at = datetime.now(timezone.utc)
+                self._reset_to_menu(conversation)
+                db.commit()
+
+                return [
+                    _pick(
+                        language,
+                        f"✨ *Your annual profile analysis*\n\n{result.analysis}",
+                        f"✨ *Sua análise anual de perfil*\n\n{result.analysis}",
+                        f"✨ *Tu análisis anual de perfil*\n\n{result.analysis}",
+                    ),
+                    _pick(
+                        language,
+                        f"*Profile summary saved for future Tarot readings*\n{result.summary}",
+                        f"*Resumo do perfil salvo para futuras leituras de Tarô*\n{result.summary}",
+                        f"*Resumen del perfil guardado para futuras lecturas de Tarot*\n{result.summary}",
+                    ),
+                    self._main_menu_text(language),
                 ]
 
             return [self._profile_menu_text(language)]
