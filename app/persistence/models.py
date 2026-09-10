@@ -64,6 +64,12 @@ class UserProfileEntity(Base):
     year_arcana_number: Mapped[Optional[int]] = mapped_column(Integer)
     year_arcana_name: Mapped[Optional[str]] = mapped_column(String(120))
     year_arcana_reference_year: Mapped[Optional[int]] = mapped_column(Integer)
+    profile_analysis: Mapped[Optional[str]] = mapped_column(Text)
+    profile_analysis_summary: Mapped[Optional[str]] = mapped_column(Text)
+    profile_analysis_reference_year: Mapped[Optional[int]] = mapped_column(Integer)
+    profile_analysis_created_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
         server_default=func.now(), onupdate=func.now()
