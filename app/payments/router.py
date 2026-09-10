@@ -1,17 +1,93 @@
 from __future__ import annotations
 
+import html
+
 import stripe
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.payments.config import get_payment_settings
-from app.payments.service import tarot_payment_service
+from app.payments.service import (
+    PaymentConfigurationError,
+    PaymentProviderError,
+    tarot_payment_service,
+)
+from app.persistence.models import WhatsAppConversationEntity
+from app.whatsapp.i18n import normalize_language
 from app.whatsapp.ritual_conversation import ritual_whatsapp_conversation_service
+from app.whatsapp.ritual_state import whatsapp_tarot_flow_store
 
 
 router = APIRouter(prefix="/api/payments", tags=["Payments"])
+
+
+def _money(currency: str, amount_cents: int) -> str:
+    amount = amount_cents / 100
+    if currency == "brl":
+        return f"R$ {amount:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"US$ {amount:.2f}"
+
+
+def _payment_language(db: Session, conversation_id: int) -> str:
+    conversation = db.get(WhatsAppConversationEntity, conversation_id)
+    return normalize_language(conversation.language if conversation else "en")
+
+
+def _choice_html(*, token: str, language: str) -> str:
+    settings = get_payment_settings()
+    usd = _money("usd", settings.usd_amount_cents)
+    brl = _money("brl", settings.brl_amount_cents)
+    labels = {
+        "en": {
+            "title": "Choose payment currency",
+            "subtitle": "Select how you want to pay for this Tarot reading.",
+            "usd": f"Pay in US dollars — {usd}",
+            "brl": f"Pay in Brazilian reais — {brl}",
+            "note": "You will be redirected to Stripe's secure checkout.",
+        },
+        "pt": {
+            "title": "Escolha a moeda do pagamento",
+            "subtitle": "Selecione como você quer pagar por esta leitura de Tarô.",
+            "usd": f"Pagar em dólar — {usd}",
+            "brl": f"Pagar em reais — {brl}",
+            "note": "Você será redirecionado para o checkout seguro da Stripe.",
+        },
+        "es": {
+            "title": "Elige la moneda del pago",
+            "subtitle": "Selecciona cómo quieres pagar esta lectura de Tarot.",
+            "usd": f"Pagar en dólares — {usd}",
+            "brl": f"Pagar en reales brasileños — {brl}",
+            "note": "Serás redirigido al checkout seguro de Stripe.",
+        },
+    }[normalize_language(language)]
+
+    safe_token = html.escape(token, quote=True)
+    return f"""<!doctype html>
+<html lang="{html.escape(language)}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{html.escape(labels['title'])}</title>
+<style>
+body {{ margin:0; background:#101014; color:#f6f3ff; font-family:Arial,sans-serif; }}
+main {{ max-width:520px; margin:0 auto; padding:48px 22px; text-align:center; }}
+.card {{ background:#1b1a22; border:1px solid #34303f; border-radius:18px; padding:28px; }}
+h1 {{ font-size:25px; margin:0 0 12px; }}
+p {{ line-height:1.5; color:#ccc6d8; }}
+a.button {{ display:block; margin:14px 0; padding:16px 18px; border-radius:12px; text-decoration:none; font-weight:700; background:#f6f3ff; color:#17131d; }}
+a.button.secondary {{ background:#d8c5ff; }}
+small {{ color:#9e97aa; }}
+</style>
+</head>
+<body><main><div class="card">
+<h1>{html.escape(labels['title'])}</h1>
+<p>{html.escape(labels['subtitle'])}</p>
+<a class="button" href="/api/payments/choose/{safe_token}/start?currency=usd">{html.escape(labels['usd'])}</a>
+<a class="button secondary" href="/api/payments/choose/{safe_token}/start?currency=brl">{html.escape(labels['brl'])}</a>
+<small>{html.escape(labels['note'])}</small>
+</div></main></body></html>"""
 
 
 @router.get("/success", response_class=HTMLResponse)
@@ -32,6 +108,63 @@ def payment_cancelled() -> str:
         "<p>You can return to WhatsApp. The reading will not proceed unless payment is completed.</p>"
         "</body></html>"
     )
+
+
+@router.get("/choose/{choice_token}", response_class=HTMLResponse)
+def choose_payment_currency(
+    choice_token: str,
+    db: Session = Depends(get_db),
+) -> str:
+    payment = tarot_payment_service.get_by_choice_token(db, choice_token)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment not found.")
+    if payment.status != "PENDING":
+        return (
+            "<html><body style='font-family:sans-serif;text-align:center;padding:40px'>"
+            "<h2>This payment is no longer pending.</h2>"
+            "<p>Return to WhatsApp to continue.</p>"
+            "</body></html>"
+        )
+
+    language = _payment_language(db, payment.conversation_id)
+    return _choice_html(token=choice_token, language=language)
+
+
+@router.get("/choose/{choice_token}/start")
+def start_checkout_in_currency(
+    choice_token: str,
+    currency: str = Query(..., pattern="^(usd|brl)$"),
+    db: Session = Depends(get_db),
+):
+    payment = tarot_payment_service.get_by_choice_token(db, choice_token)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment not found.")
+
+    language = _payment_language(db, payment.conversation_id)
+    try:
+        payment = tarot_payment_service.choose_currency(
+            db=db,
+            choice_token=choice_token,
+            currency=currency,
+            language=language,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PaymentConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PaymentProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    conversation = db.get(WhatsAppConversationEntity, payment.conversation_id)
+    if conversation is not None and conversation.state == "RITUAL_AWAITING_PAYMENT":
+        flow = whatsapp_tarot_flow_store.get(db, conversation.id)
+        flow["payment_session_id"] = payment.provider_session_id
+        flow["payment_url"] = payment.checkout_url
+        flow["payment_currency"] = payment.currency
+        whatsapp_tarot_flow_store.save(db, conversation.id, flow)
+        db.commit()
+
+    return RedirectResponse(url=payment.checkout_url, status_code=303)
 
 
 @router.post("/stripe/webhook")
@@ -57,8 +190,6 @@ async def stripe_webhook(
     except (ValueError, stripe.error.SignatureVerificationError) as exc:
         raise HTTPException(status_code=400, detail="Invalid Stripe webhook.") from exc
 
-    # stripe-python returns a Stripe Event object, not a plain dict.
-    # Convert it before using dict methods such as .get().
     event_data = event.to_dict()
     event_type = event_data.get("type")
     session = (event_data.get("data") or {}).get("object") or {}
@@ -83,7 +214,6 @@ async def stripe_webhook(
             provider_session_id=session_id,
         )
         if to_number and messages:
-            # Local import avoids coupling the payment service to WhatsApp routing.
             from app.whatsapp.ritual_webhook import _dispatch_outgoing
 
             _dispatch_outgoing(db=db, to=to_number, messages=messages)
