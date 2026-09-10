@@ -90,6 +90,29 @@ small {{ color:#9e97aa; }}
 </div></main></body></html>"""
 
 
+def _admin_bypass_html(language: str) -> str:
+    labels = {
+        "en": (
+            "Administrator test access confirmed",
+            "No payment was charged. Return to WhatsApp; the Tarot reading is continuing automatically.",
+        ),
+        "pt": (
+            "Acesso de teste de administrador confirmado",
+            "Nenhum pagamento foi cobrado. Volte ao WhatsApp; a leitura de Tarô está continuando automaticamente.",
+        ),
+        "es": (
+            "Acceso de prueba de administrador confirmado",
+            "No se realizó ningún cobro. Vuelve a WhatsApp; la lectura de Tarot continúa automáticamente.",
+        ),
+    }[normalize_language(language)]
+    return (
+        "<html><body style='font-family:sans-serif;text-align:center;padding:40px'>"
+        f"<h2>{html.escape(labels[0])}</h2>"
+        f"<p>{html.escape(labels[1])}</p>"
+        "</body></html>"
+    )
+
+
 @router.get("/success", response_class=HTMLResponse)
 def payment_success() -> str:
     return (
@@ -165,6 +188,34 @@ def start_checkout_in_currency(
         db.commit()
 
     return RedirectResponse(url=payment.checkout_url, status_code=303)
+
+
+@router.get("/admin-bypass/{choice_token}", response_class=HTMLResponse)
+def admin_payment_bypass(
+    choice_token: str,
+    db: Session = Depends(get_db),
+) -> str:
+    try:
+        payment, changed = tarot_payment_service.activate_admin_bypass(
+            db=db,
+            choice_token=choice_token,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    language = _payment_language(db, payment.conversation_id)
+    if changed:
+        to_number, messages = ritual_whatsapp_conversation_service.resume_after_payment(
+            db=db,
+            conversation_id=payment.conversation_id,
+            provider_session_id=payment.provider_session_id,
+        )
+        if to_number and messages:
+            from app.whatsapp.ritual_webhook import _dispatch_outgoing
+
+            _dispatch_outgoing(db=db, to=to_number, messages=messages)
+
+    return _admin_bypass_html(language)
 
 
 @router.post("/stripe/webhook")
