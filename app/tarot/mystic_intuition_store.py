@@ -65,6 +65,31 @@ class MysticIntuitionStore:
             row.payload = payload
         db.commit()
 
+    def replace_exact(
+        self,
+        db: Session,
+        reading_id: int,
+        intuitions: list[MysticIntuition],
+    ) -> None:
+        """Replace persisted intuitions exactly, without reapplying minimum-weight rules.
+
+        This is used after the user explicitly confirms or rejects the intuition
+        probe, because that answer is meant to change the selected intuition's
+        weight deterministically.
+        """
+        row = db.scalar(
+            select(MysticIntuitionEntity).where(
+                MysticIntuitionEntity.reading_id == reading_id
+            )
+        )
+        payload = [intuition.to_dict() for intuition in intuitions[:2]]
+        if row is None:
+            row = MysticIntuitionEntity(reading_id=reading_id, payload=payload)
+            db.add(row)
+        else:
+            row.payload = payload
+        db.commit()
+
     def ensure_for_reading(self, db: Session, reading_id: int) -> None:
         """Persist forced contextual intuitions even when the normal random draw returned none."""
         reading = db.get(ReadingEntity, reading_id)
