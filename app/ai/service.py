@@ -81,6 +81,7 @@ class TarotInterpretationService:
                 f"GLOBAL NARRATIVE:\n{narrative}\n\n"
                 f"CARD-BY-CARD ANALYSIS:\n{card_analysis}\n\n"
                 f"OPTIONAL USER PROFILE:\n{self._profile_text(profile)}\n\n"
+                f"DETERMINISTIC SYMBOLIC SIGNALS:\n{self._symbolic_signal_text(profile)}\n\n"
                 f"{intuition_text}"
             ),
         )
@@ -161,9 +162,16 @@ class TarotInterpretationService:
         lines = [
             "DETERMINISTIC SYMBOLIC RECURRENCE SIGNALS — THESE WERE COMPUTED BY APPLICATION CODE, NOT BY AI:",
             (
-                "Treat each signal below as real metadata about this user's recorded Tarot history/profile. "
-                "Do not recompute it, infer additional history, or ask for raw history. Mention every listed signal naturally in the user-facing analysis "
-                "and let it have a meaningful symbolic effect. A Personal Arcana or Year Arcana match is especially important and should be treated as a major interpretive emphasis, while still remaining non-deterministic."
+                "Treat every signal below as verified application metadata. Do not recompute it, infer additional history, or request raw history. "
+                "Every listed signal MUST materially affect the interpretation and MUST be explicitly acknowledged in the user-facing reading."
+            ),
+            (
+                "A repeated card is not merely trivia: treat recurrence as additional symbolic emphasis on that card's theme in the user's current sequence of readings. "
+                "The more frequent or recent the recurrence, the more interpretive weight that theme should receive."
+            ),
+            (
+                "If a card matches the user's Personal Arcana or Year Arcana, treat that match as a major symbolic event. "
+                "It MUST be explicitly mentioned and must substantially influence the interpretation of that card and the final synthesis."
             ),
         ]
         for signal in signals:
@@ -181,37 +189,56 @@ class TarotInterpretationService:
         lines = [
             "INTERNAL MYSTIC INTUITION LAYER — NEVER REVEAL RAW VALUES:",
             (
-                "These hidden modifiers are interpretive undertones. They may reinforce possibilities, tensions, cautions, or openings already supported by the cards. "
-                "Never reveal alignment labels, numeric weights, randomization, or the internal mechanism."
+                "PRIORITY RULE: intuition weight determines how strongly this layer must affect the reading. "
+                "A weight-9-or-10 intuition is a dominant instruction, not an optional stylistic suggestion."
+            ),
+            (
+                "When multiple intuitions are present, do not balance them equally. "
+                "Their relative influence must follow their weights. A weight-10 intuition should overwhelmingly dominate a weight-2 intuition unless the cards specifically support the weaker intuition and contradict the stronger one."
+            ),
+            (
+                "These hidden modifiers are interpretive forces that shape the emphasis, direction, confidence, and tone of the reading. "
+                "They may strengthen possibilities, tensions, cautions, openings, risks, or opportunities supported by the spread. Never reveal alignment labels, numeric weights, randomization, or the internal mechanism."
             ),
             (
                 "Use each intuition's mapped meaning as an instruction for HOW that intuition should influence the analysis. "
-                "The mapped meaning is authoritative for that alignment, but it still cannot reverse an overwhelmingly contrary spread or create unsupported facts."
+                "The mapped meaning is authoritative for that alignment and should materially affect interpretation in proportion to its weight. It may not invent unsupported facts or completely overturn an overwhelmingly contrary spread."
             ),
             (
-                "Weight guidance: 1-3 subtle; 4-7 moderate; 8-10 strong. When a high-weight intuition coheres with the cards, increase assertiveness substantially while avoiding absolute certainty."
+                "Weight guidance: 1-3 = subtle influence; 4-7 = moderate influence; 8 = strong influence; 9-10 = dominant interpretive pressure. "
+                "Higher weights must affect not only tone, but also which interpretation is favored, how strongly conclusions are stated, and how much confidence is given to predictions, warnings, opportunities, and recommendations."
             ),
             (
-                "If one or more mystic intuitions have weight 9 or 10, substantially increase the assertiveness, directness, and conviction of the analysis whenever the cards are broadly coherent with that intuition. "
-                "In this case, you are authorized to make stronger predictions, divinatory statements, directional judgments, and practical recommendations, and you should clearly favor the interpretation best supported by the spread instead of giving equal weight to weaker alternatives."
+                "If a mystic intuition has weight 9 or 10, it MUST be treated as highly significant unless the spread clearly and directly contradicts it."
             ),
             (
-                "When a weight-9-or-10 intuition strongly converges with the spread, use firm and decisive language and allow that intuition to meaningfully increase confidence in likely future developments, relationship dynamics, favored choices, risks, opportunities, and recommended actions. "
-                "Do not dilute a strongly coherent reading with unnecessary hedging such as 'maybe', 'could', 'perhaps', or equally weighted opposite possibilities."
+                "When a weight-9-or-10 intuition is not clearly contradicted by the spread, substantially increase assertiveness, directness, and conviction. "
+                "You are authorized to make stronger predictions, divinatory statements, directional judgments, and practical recommendations, and you should explicitly favor the interpretation best supported by the cards and that intuition."
             ),
             (
-                "A weight-9-or-10 intuition may increase confidence and conviction, but it does not grant factual omniscience. "
-                "Do not present future events as literally guaranteed facts and do not claim direct access to another person's hidden thoughts, intentions, fidelity, actions, or undisclosed facts; instead, present them as strongly favored interpretations or predictions supported by the reading."
+                "For weight-9-or-10 intuitions, do not default to balanced conclusions such as 'it could be either way', 'maybe', 'perhaps', or equally weighted opposite possibilities. "
+                "Choose the dominant direction of the reading, state it plainly, and keep weaker alternatives clearly subordinate unless there is substantial contradictory evidence in the spread."
             ),
             (
-                "If the cards and a weight-9-or-10 intuition converge strongly, commit to the dominant interpretation unless there is substantial contradictory evidence elsewhere in the spread. "
-                "High-strength intuition should influence the conclusion itself, not merely the tone."
+                "A weight-9-or-10 intuition must materially influence the final conclusion unless it is clearly contradicted. "
+                "Its effect should be visible in the predicted direction of events, the interpretation of relationship dynamics, the option favored in a decision, the seriousness of a risk, the importance of an opportunity, or the strength of practical guidance—not merely as a stylistic or emotional change in wording."
+            ),
+            (
+                "High-weight intuition increases confidence but does not grant factual omniscience. "
+                "Do not present future events as literally guaranteed facts or claim direct access to another person's hidden thoughts, intentions, fidelity, actions, or undisclosed facts. Instead, when the evidence is strong, present these as strongly favored predictions, inferences, or divinatory conclusions from the reading."
+            ),
+            (
+                "If a weight-9-or-10 intuition and the spread point in the same general direction, commit to that interpretation decisively. "
+                "Only reduce its influence when the spread contains clear, substantial, and specific contradictory evidence."
             ),
             "Hidden intuition values and mapped meanings:",
         ]
         for index, intuition in enumerate(intuitions, start=1):
             lines.append(
-                f"- Intuition {index}: alignment={intuition.alignment}; weight={intuition.weight}/10; meaning={intuition.description}"
+                f"- Intuition {index}: "
+                f"alignment={intuition.alignment}; "
+                f"weight={intuition.weight}/10; "
+                f"INTERPRETIVE INSTRUCTION: {intuition.description}"
             )
         return "\n".join(lines)
 
