@@ -58,6 +58,10 @@ class ReadingPersistenceService:
             "year_arcana_reference_year": (
                 p.year_arcana_reference_year if p else None
             ),
+            "profile_analysis_summary": p.profile_analysis_summary if p else None,
+            "profile_analysis_reference_year": (
+                p.profile_analysis_reference_year if p else None
+            ),
             "natal_chart": p.natal_chart if p else None,
         }
 
