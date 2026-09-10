@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 import stripe
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.payments.config import PaymentSettings, get_payment_settings
@@ -31,14 +31,22 @@ class TarotPaymentService:
         conversation_id: int,
         language: str,
     ) -> TarotPaymentEntity:
-        """Create the payment gate and an initial USD Stripe session.
+        """Create the payment gate for a Tarot reading.
 
-        The WhatsApp link points to our currency-choice page. An initial Stripe
-        session is created immediately so Stripe can still emit an expiration
-        event if the user never opens the choice page. If BRL is selected, that
-        session is replaced by a BRL session before checkout.
+        Normal users receive the existing Stripe currency-choice flow.
+        Administrators receive a private, one-use bypass URL instead, so they
+        can exercise the complete production flow without creating a charge.
         """
         settings = get_payment_settings()
+
+        if self._is_admin(db, user_id):
+            return self._create_admin_bypass(
+                db=db,
+                settings=settings,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+
         if not settings.stripe_secret_key:
             raise PaymentConfigurationError("STRIPE_SECRET_KEY is not configured.")
 
@@ -91,6 +99,8 @@ class TarotPaymentService:
         payment = self.get_by_choice_token(db, choice_token)
         if payment is None:
             raise ValueError("Payment not found.")
+        if payment.provider != "stripe":
+            raise ValueError("This payment does not use Stripe Checkout.")
         if payment.status != "PENDING":
             raise ValueError("Payment is no longer pending.")
 
@@ -105,8 +115,6 @@ class TarotPaymentService:
             db.commit()
             raise ValueError("Payment has expired.")
 
-        # If this currency already owns the current Stripe session, retrieve its
-        # Checkout URL instead of creating a duplicate session.
         if payment.currency == normalized:
             try:
                 session = stripe.checkout.Session.retrieve(payment.provider_session_id)
@@ -146,9 +154,6 @@ class TarotPaymentService:
             try:
                 stripe.checkout.Session.expire(old_session_id)
             except Exception:
-                # The new session is already persisted and is now the source of
-                # truth. Failure to expire the old unused session must not block
-                # the customer's checkout.
                 pass
 
         return payment
@@ -212,6 +217,39 @@ class TarotPaymentService:
         db.refresh(payment)
         return payment, True
 
+    def activate_admin_bypass(
+        self,
+        *,
+        db: Session,
+        choice_token: str,
+    ) -> tuple[TarotPaymentEntity, bool]:
+        payment = self.get_by_choice_token(db, choice_token)
+        if payment is None:
+            raise ValueError("Bypass token not found.")
+        if payment.provider != "admin":
+            raise ValueError("This token is not an administrator bypass token.")
+
+        if payment.status == "PAID":
+            return payment, False
+        if payment.status != "PENDING":
+            raise ValueError("This administrator bypass is no longer available.")
+
+        if payment.expires_at is not None and payment.expires_at <= datetime.now(timezone.utc):
+            payment.status = "EXPIRED"
+            db.commit()
+            raise ValueError("This administrator bypass has expired.")
+
+        if not self._is_admin(db, payment.user_id):
+            payment.status = "CANCELLED"
+            db.commit()
+            raise ValueError("Administrator access is no longer enabled for this user.")
+
+        payment.status = "PAID"
+        payment.paid_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(payment)
+        return payment, True
+
     def cancel_pending_for_conversation(
         self,
         *,
@@ -231,17 +269,57 @@ class TarotPaymentService:
             return
 
         settings = get_payment_settings()
-        if settings.stripe_secret_key:
+        if payment.provider == "stripe" and settings.stripe_secret_key:
             stripe.api_key = settings.stripe_secret_key
             try:
                 stripe.checkout.Session.expire(payment.provider_session_id)
             except Exception:
-                # The local state still cancels the WhatsApp flow if Stripe is
-                # temporarily unreachable.
                 pass
 
         payment.status = "CANCELLED"
         db.commit()
+
+    def _create_admin_bypass(
+        self,
+        *,
+        db: Session,
+        settings: PaymentSettings,
+        user_id: int,
+        conversation_id: int,
+    ) -> TarotPaymentEntity:
+        choice_token = secrets.token_urlsafe(32)
+        session_id = f"admin_{secrets.token_urlsafe(24)}"
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.checkout_expiration_minutes
+        )
+        bypass_url = (
+            f"{settings.public_base_url}/api/payments/admin-bypass/{choice_token}"
+        )
+
+        payment = TarotPaymentEntity(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            provider="admin",
+            provider_session_id=session_id,
+            checkout_choice_token=choice_token,
+            checkout_url=bypass_url,
+            amount_cents=0,
+            currency="usd",
+            status="PENDING",
+            expires_at=expires_at,
+        )
+        db.add(payment)
+        db.commit()
+        db.refresh(payment)
+        return payment
+
+    @staticmethod
+    def _is_admin(db: Session, user_id: int) -> bool:
+        value = db.execute(
+            text("SELECT is_admin FROM users WHERE id = :user_id"),
+            {"user_id": user_id},
+        ).scalar_one_or_none()
+        return bool(value)
 
     @staticmethod
     def _create_stripe_session(
