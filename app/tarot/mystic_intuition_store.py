@@ -4,7 +4,8 @@ from sqlalchemy import DateTime, ForeignKey, Integer, JSON, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.database.base import Base
-from app.tarot.mystic_intuition import MysticIntuition
+from app.persistence.models import ReadingEntity
+from app.tarot.mystic_intuition import MysticIntuition, enforce_contextual_intuitions
 
 
 class MysticIntuitionEntity(Base):
@@ -37,13 +38,42 @@ class MysticIntuitionStore:
                 MysticIntuitionEntity.reading_id == reading_id
             )
         )
-        payload = [intuition.to_dict() for intuition in intuitions]
+        existing: list[MysticIntuition] = []
+        if row is not None:
+            for item in row.payload or []:
+                if isinstance(item, dict):
+                    try:
+                        existing.append(MysticIntuition.from_dict(item))
+                    except (TypeError, ValueError):
+                        pass
+
+        reading = db.get(ReadingEntity, reading_id)
+        signals = []
+        if reading is not None and isinstance(reading.profile_snapshot, dict):
+            raw = reading.profile_snapshot.get("symbolic_signals") or []
+            if isinstance(raw, list):
+                signals = [item for item in raw if isinstance(item, dict)]
+
+        combined = (existing + list(intuitions))[:2]
+        combined = enforce_contextual_intuitions(combined, signals)
+        payload = [intuition.to_dict() for intuition in combined]
+
         if row is None:
             row = MysticIntuitionEntity(reading_id=reading_id, payload=payload)
             db.add(row)
         else:
             row.payload = payload
         db.commit()
+
+    def ensure_for_reading(self, db: Session, reading_id: int) -> None:
+        """Persist forced contextual intuitions even when the normal random draw returned none."""
+        reading = db.get(ReadingEntity, reading_id)
+        if reading is None or not isinstance(reading.profile_snapshot, dict):
+            return
+        signals = reading.profile_snapshot.get("symbolic_signals") or []
+        forced = enforce_contextual_intuitions([], signals if isinstance(signals, list) else [])
+        if forced:
+            self.save(db, reading_id, forced)
 
     def get(self, db: Session, reading_id: int) -> list[MysticIntuition]:
         row = db.scalar(
