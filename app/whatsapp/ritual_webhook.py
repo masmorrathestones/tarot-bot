@@ -182,8 +182,9 @@ def _decorate_navigation_messages(
     for message in messages:
         if isinstance(message, str) and message == main_menu:
             decorated.append(plan_whatsapp_service.decorate_menu(message, language))
-        elif isinstance(message, str) and message == profile_menu:
-            decorated.append(plan_whatsapp_service.decorate_profile_menu(message, language))
+        elif isinstance(message, str) and profile_menu in message:
+            decorated_profile = plan_whatsapp_service.decorate_profile_menu(profile_menu, language)
+            decorated.append(message.replace(profile_menu, decorated_profile, 1))
         else:
             decorated.append(message)
     return decorated
