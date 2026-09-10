@@ -177,10 +177,13 @@ def _decorate_navigation_messages(
 ) -> list[str | dict]:
     language = _conversation_language(db, from_number)
     main_menu = t(language, "main_menu")
+    profile_menu = t(language, "profile_menu")
     decorated: list[str | dict] = []
     for message in messages:
         if isinstance(message, str) and message == main_menu:
             decorated.append(plan_whatsapp_service.decorate_menu(message, language))
+        elif isinstance(message, str) and message == profile_menu:
+            decorated.append(plan_whatsapp_service.decorate_profile_menu(message, language))
         else:
             decorated.append(message)
     return decorated
