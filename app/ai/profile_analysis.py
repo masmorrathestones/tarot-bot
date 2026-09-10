@@ -18,6 +18,8 @@ The full analysis should explain:
 - themes, opportunities and tensions that may deserve attention during the profile's reference year;
 - practical areas of attention for relationships, work/study, decisions and personal development when supported by the supplied profile.
 
+Keep the full analysis concise enough for a WhatsApp message: no more than about 2,800 characters.
+
 Do not invent facts that are absent from the profile. Do not diagnose mental or physical health conditions. Do not give medical, legal or financial instructions. Do not claim certainty about future events. Phrase the annual outlook as tendencies, themes and possibilities.
 
 Also produce a concise profile summary with 4 to 8 lines. Across those lines, cover general characteristics, qualities, weaknesses/defects to work on, and important points of attention. Each summary item must be a single concise line and useful as context for future Tarot readings.
@@ -63,12 +65,20 @@ class ProfileAnalysisService:
             schema={
                 "type": "object",
                 "properties": {
-                    "analysis": {"type": "string", "minLength": 1},
+                    "analysis": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 3000,
+                    },
                     "summary_lines": {
                         "type": "array",
                         "minItems": 4,
                         "maxItems": 8,
-                        "items": {"type": "string", "minLength": 1},
+                        "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 240,
+                        },
                     },
                 },
                 "required": ["analysis", "summary_lines"],
