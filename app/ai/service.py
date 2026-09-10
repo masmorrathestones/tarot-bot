@@ -191,6 +191,22 @@ class TarotInterpretationService:
             (
                 "Weight guidance: 1-3 subtle; 4-7 moderate; 8-10 strong. When a high-weight intuition coheres with the cards, increase assertiveness substantially while avoiding absolute certainty."
             ),
+            (
+                "If one or more mystic intuitions have weight 9 or 10, substantially increase the assertiveness, directness, and conviction of the analysis whenever the cards are broadly coherent with that intuition. "
+                "In this case, you are authorized to make stronger predictions, divinatory statements, directional judgments, and practical recommendations, and you should clearly favor the interpretation best supported by the spread instead of giving equal weight to weaker alternatives."
+            ),
+            (
+                "When a weight-9-or-10 intuition strongly converges with the spread, use firm and decisive language and allow that intuition to meaningfully increase confidence in likely future developments, relationship dynamics, favored choices, risks, opportunities, and recommended actions. "
+                "Do not dilute a strongly coherent reading with unnecessary hedging such as 'maybe', 'could', 'perhaps', or equally weighted opposite possibilities."
+            ),
+            (
+                "A weight-9-or-10 intuition may increase confidence and conviction, but it does not grant factual omniscience. "
+                "Do not present future events as literally guaranteed facts and do not claim direct access to another person's hidden thoughts, intentions, fidelity, actions, or undisclosed facts; instead, present them as strongly favored interpretations or predictions supported by the reading."
+            ),
+            (
+                "If the cards and a weight-9-or-10 intuition converge strongly, commit to the dominant interpretation unless there is substantial contradictory evidence elsewhere in the spread. "
+                "High-strength intuition should influence the conclusion itself, not merely the tone."
+            ),
             "Hidden intuition values and mapped meanings:",
         ]
         for index, intuition in enumerate(intuitions, start=1):
