@@ -7,7 +7,10 @@ from app.ai.config import get_ai_settings
 from app.persistence.models import DrawnCardEntity, ReadingEntity
 from app.tarot.enums import Orientation
 from app.tarot.models import DrawnCard, Spread, SpreadPosition
+from app.tarot.mystic_intuition_store import mystic_intuition_store
+from app.tarot.recurrence import detect_symbolic_signals
 from app.tarot.service import tarot_draw_service
+from app.users.relevant_info import relevant_information_service
 from app.users.service import user_service
 
 
@@ -34,6 +37,17 @@ class ReadingPersistenceService:
     ) -> ReadingEntity:
         user = user_service.get(db, user_id)
         p = user.profile
+
+        symbolic_signals = detect_symbolic_signals(
+            db,
+            user_id=user.id,
+            drawn_cards=drawn_cards,
+            personal_arcana_number=(p.personal_arcana_number if p else None),
+            year_arcana_number=(p.year_arcana_number if p else None),
+        )
+        selected_relevant_information = relevant_information_service.consume_selected(
+            db, user.id
+        )
 
         snapshot = {
             "name": user.name,
@@ -63,6 +77,8 @@ class ReadingPersistenceService:
                 p.profile_analysis_reference_year if p else None
             ),
             "natal_chart": p.natal_chart if p else None,
+            "selected_relevant_information": selected_relevant_information,
+            "symbolic_signals": symbolic_signals,
         }
 
         reading = ReadingEntity(
@@ -96,10 +112,15 @@ class ReadingPersistenceService:
 
         db.add(reading)
 
-        # Commit the cards BEFORE the AI call. A failed AI request therefore
-        # cannot cause a redraw on the historical reading.
+        # Commit the exact cards and deterministic symbolic signals BEFORE AI.
+        # The AI never receives raw reading history; it receives only the
+        # already-computed recurrence/profile-match facts in the snapshot.
         db.commit()
         db.refresh(reading)
+
+        # Recurrence and Personal/Year Arcana matches can force intuition
+        # minimums even when the ordinary random intuition draw returned none.
+        mystic_intuition_store.ensure_for_reading(db, reading.id)
         return self.get(db, reading.id)
 
     def begin_retry(
