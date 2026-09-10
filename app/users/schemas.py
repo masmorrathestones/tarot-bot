@@ -43,6 +43,10 @@ class UserProfileResponse(BaseModel):
     year_arcana_number: Optional[int] = None
     year_arcana_name: Optional[str] = None
     year_arcana_reference_year: Optional[int] = None
+    profile_analysis: Optional[str] = None
+    profile_analysis_summary: Optional[str] = None
+    profile_analysis_reference_year: Optional[int] = None
+    profile_analysis_created_at: Optional[datetime] = None
 
 
 class UserResponse(BaseModel):
