@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.ai.intuition_confirmation import intuition_confirmation_service
 from app.ai.provider import AIConfigurationError, AIProviderError
 from app.ai.service import UserSymbolicProfile, tarot_interpretation_service
 from app.ai.spread_selector import SpreadSelectionError, spread_selection_service
@@ -36,12 +37,16 @@ from app.whatsapp.tarot_media import (
 TAROT_COMMANDS = {"tarot", "/tarot", "reading", "/reading", "leitura", "lectura", "new", "/new"}
 CANCEL_COMMANDS = {"cancel", "/cancel", "cancelar", "/cancelar"}
 SKIP_ANSWERS = {"skip", "pular", "omitir"}
+YES_ANSWERS = {"yes", "y", "sim", "s", "si", "sí"}
+NO_ANSWERS = {"no", "n", "não", "nao"}
 RITUAL_STATES = {
     "RITUAL_AWAITING_QUESTION",
     "RITUAL_AWAITING_CONTEXT",
     "RITUAL_AWAITING_PAYMENT",
     "RITUAL_DRAWING",
     "RITUAL_AWAITING_FALLEN_CHOICE",
+    "RITUAL_AWAITING_INTUITION_PERMISSION",
+    "RITUAL_AWAITING_INTUITION_ANSWER",
     "RITUAL_ANALYZING",
 }
 
@@ -230,6 +235,125 @@ class RitualWhatsAppConversationService:
             payload = whatsapp_tarot_flow_store.get(db, conversation.id)
             return self._continue_draw(db, user, conversation, payload)
 
+        if state == "RITUAL_AWAITING_INTUITION_PERMISSION":
+            flow = whatsapp_tarot_flow_store.get(db, conversation.id)
+            reading_id = int(flow.get("analysis_reading_id") or 0)
+            if not reading_id:
+                self._cancel(db, conversation)
+                return [self._main_menu_text(language)]
+
+            if command in NO_ANSWERS:
+                return [
+                    _pick(
+                        language,
+                        "Of course. Let's continue directly with the cards.",
+                        "Claro. Vamos seguir diretamente para a análise das cartas.",
+                        "Claro. Sigamos directamente con el análisis de las cartas.",
+                    ),
+                    *self._begin_analysis(db, conversation, reading_id, language),
+                ]
+
+            if command not in YES_ANSWERS:
+                return [self._intuition_permission_prompt(language)]
+
+            reading = reading_persistence_service.get(db, reading_id)
+            intuitions = mystic_intuition_store.get(db, reading_id)
+            target_index = int(flow.get("intuition_target_index") or 0)
+            if target_index < 0 or target_index >= len(intuitions):
+                return self._begin_analysis(db, conversation, reading_id, language)
+
+            try:
+                intuition_question = intuition_confirmation_service.generate_question(
+                    question=reading.question,
+                    context=reading.context,
+                    profile_snapshot=reading.profile_snapshot or {},
+                    intuition=intuitions[target_index],
+                    language=language,
+                )
+            except (AIConfigurationError, AIProviderError, ValueError):
+                return [
+                    _pick(
+                        language,
+                        "I couldn't put that intuition into a precise question, so let's not force it. We'll continue with the cards.",
+                        "Não consegui transformar essa intuição em uma pergunta precisa, então não vou forçar. Vamos continuar com as cartas.",
+                        "No pude convertir esa intuición en una pregunta precisa, así que no voy a forzarla. Sigamos con las cartas.",
+                    ),
+                    *self._begin_analysis(db, conversation, reading_id, language),
+                ]
+
+            flow["intuition_confirmation_question"] = intuition_question
+            conversation.state = "RITUAL_AWAITING_INTUITION_ANSWER"
+            whatsapp_tarot_flow_store.save(db, conversation.id, flow)
+            db.commit()
+            return [self._intuition_question_prompt(intuition_question, language)]
+
+        if state == "RITUAL_AWAITING_INTUITION_ANSWER":
+            if command not in YES_ANSWERS | NO_ANSWERS:
+                flow = whatsapp_tarot_flow_store.get(db, conversation.id)
+                question = str(flow.get("intuition_confirmation_question") or "").strip()
+                if not question:
+                    return [self._intuition_permission_prompt(language)]
+                return [self._intuition_question_prompt(question, language)]
+
+            flow = whatsapp_tarot_flow_store.get(db, conversation.id)
+            reading_id = int(flow.get("analysis_reading_id") or 0)
+            question = str(flow.get("intuition_confirmation_question") or "").strip()
+            target_index = int(flow.get("intuition_target_index") or 0)
+            if not reading_id or not question:
+                self._cancel(db, conversation)
+                return [self._main_menu_text(language)]
+
+            reading = reading_persistence_service.get(db, reading_id)
+            intuitions = mystic_intuition_store.get(db, reading_id)
+            if target_index < 0 or target_index >= len(intuitions):
+                return self._begin_analysis(db, conversation, reading_id, language)
+
+            confirmed = command in YES_ANSWERS
+            target = intuitions[target_index]
+            new_weight = 10 if confirmed else max(1, target.weight - 2)
+            intuitions[target_index] = MysticIntuition(
+                alignment=target.alignment,
+                weight=new_weight,
+            )
+            mystic_intuition_store.replace_exact(db, reading_id, intuitions)
+
+            answer_text = "YES" if confirmed else "NO"
+            confirmation_context = (
+                "INTUITION CONFIRMATION EXCHANGE (user-confirmed context for this reading):\n"
+                f"Assistant asked: {question}\n"
+                f"User answered: {answer_text}.\n"
+                "Use this exchange as additional context in the interpretation. Do not expose the hidden intuition mechanism or numeric weight."
+            )
+            reading.context = (
+                f"{reading.context}\n\n{confirmation_context}"
+                if reading.context
+                else confirmation_context
+            )
+            snapshot = dict(reading.profile_snapshot or {})
+            snapshot["intuition_confirmation"] = {
+                "question": question,
+                "answer": answer_text,
+                "confirmed": confirmed,
+            }
+            reading.profile_snapshot = snapshot
+            db.commit()
+
+            acknowledgment = _pick(
+                language,
+                "I knew it — that's exactly what I was sensing. Let's continue with the card analysis.",
+                "Eu sabia! Era exatamente isso que eu estava sentindo. Vamos prosseguir para a análise das cartas.",
+                "¡Lo sabía! Era exactamente lo que estaba sintiendo. Sigamos con el análisis de las cartas.",
+            ) if confirmed else _pick(
+                language,
+                "I understand. That makes sense, though I still have some intuition around this. Let's see how it appears in the cards.",
+                "Compreendo, faz sentido. Ainda tenho alguma intuição sobre isso; vamos descobrir como ela aparece na análise das cartas.",
+                "Entiendo, tiene sentido. Aun así sigo teniendo cierta intuición sobre esto; veamos cómo aparece en el análisis de las cartas.",
+            )
+            return [
+                acknowledgment,
+                *self._begin_analysis(db, conversation, reading_id, language),
+            ]
+
         if state == "RITUAL_ANALYZING":
             return [self._with_cancel(t(language, "already_analyzing"), language)]
 
@@ -271,8 +395,6 @@ class RitualWhatsAppConversationService:
                 profile_snapshot={**self._profile_snapshot(user), "language": language},
             )
         except (AIConfigurationError, AIProviderError, SpreadSelectionError):
-            # Payment has already succeeded. Fall back to a stable spread instead
-            # of charging the user and abandoning the reading.
             spread_code = "THREE_CARD_SITUATION"
 
         payload["spread_code"] = spread_code
@@ -403,6 +525,36 @@ class RitualWhatsAppConversationService:
         if intuitions:
             mystic_intuition_store.save(db, reading.id, intuitions)
 
+        persisted_intuitions = mystic_intuition_store.get(db, reading.id)
+        strong_indices = [
+            index for index, intuition in enumerate(persisted_intuitions)
+            if intuition.weight > 6
+        ]
+
+        spread_message = {
+            "type": "image",
+            "url": spread_image_url(reading.id),
+            "caption": t(language, "reading_caption", id=reading.id),
+        }
+
+        if strong_indices:
+            target_index = max(
+                strong_indices,
+                key=lambda index: persisted_intuitions[index].weight,
+            )
+            conversation.state = "RITUAL_AWAITING_INTUITION_PERMISSION"
+            whatsapp_tarot_flow_store.save(
+                db,
+                conversation.id,
+                {
+                    "analysis_reading_id": reading.id,
+                    "intuition_target_index": target_index,
+                    "language": language,
+                },
+            )
+            db.commit()
+            return [spread_message, self._intuition_permission_prompt(language)]
+
         conversation.state = "RITUAL_ANALYZING"
         whatsapp_tarot_flow_store.save(
             db,
@@ -412,13 +564,28 @@ class RitualWhatsAppConversationService:
         db.commit()
 
         return [
-            {
-                "type": "image",
-                "url": spread_image_url(reading.id),
-                "caption": t(language, "reading_caption", id=reading.id),
-            },
+            spread_message,
             {"type": "analysis_wait", "language": language},
             {"type": "deferred_tarot_analysis", "reading_id": reading.id},
+        ]
+
+    def _begin_analysis(
+        self,
+        db: Session,
+        conversation,
+        reading_id: int,
+        language: str,
+    ) -> list[str | dict]:
+        conversation.state = "RITUAL_ANALYZING"
+        whatsapp_tarot_flow_store.save(
+            db,
+            conversation.id,
+            {"analysis_reading_id": reading_id, "language": language},
+        )
+        db.commit()
+        return [
+            {"type": "analysis_wait", "language": language},
+            {"type": "deferred_tarot_analysis", "reading_id": reading_id},
         ]
 
     def complete_analysis(
@@ -605,6 +772,25 @@ class RitualWhatsAppConversationService:
     def _fallen_choice_prompt(cls, count: int, language: str) -> str:
         options = ", ".join(str(index) for index in range(1, count + 1))
         return cls._with_cancel(t(language, "fallen_choice", options=options), language)
+
+    @staticmethod
+    def _intuition_permission_prompt(language: str) -> str:
+        return _pick(
+            language,
+            "Before I continue, may I ask you something? I have a particular intuition about your situation and I'd like to confirm it before I interpret the cards. Reply YES or NO.",
+            "Antes de continuar, posso te fazer uma pergunta? Estou com uma intuição bem específica sobre a sua situação e gostaria de confirmá-la antes de interpretar as cartas. Responda SIM ou NÃO.",
+            "Antes de continuar, ¿puedo hacerte una pregunta? Tengo una intuición bastante específica sobre tu situación y me gustaría confirmarla antes de interpretar las cartas. Responde SÍ o NO.",
+        )
+
+    @staticmethod
+    def _intuition_question_prompt(question: str, language: str) -> str:
+        suffix = _pick(
+            language,
+            "\n\nReply only YES or NO.",
+            "\n\nResponda apenas SIM ou NÃO.",
+            "\n\nResponde solo SÍ o NO.",
+        )
+        return f"{question}{suffix}"
 
     @staticmethod
     def _with_cancel(text: str, language: str) -> str:
