@@ -57,8 +57,11 @@ async def stripe_webhook(
     except (ValueError, stripe.error.SignatureVerificationError) as exc:
         raise HTTPException(status_code=400, detail="Invalid Stripe webhook.") from exc
 
-    event_type = event.get("type")
-    session = event.get("data", {}).get("object", {})
+    # stripe-python returns a Stripe Event object, not a plain dict.
+    # Convert it before using dict methods such as .get().
+    event_data = event.to_dict()
+    event_type = event_data.get("type")
+    session = (event_data.get("data") or {}).get("object") or {}
     session_id = str(session.get("id") or "")
     if not session_id:
         return {"status": "ignored"}
