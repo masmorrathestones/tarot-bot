@@ -49,9 +49,9 @@ _MESSAGES = {
         "es": "¡Hola, {name}! Bienvenido. ✨\n\nEsta es una experiencia de cartomancia digital creada para transformar los símbolos del Tarot en reflexión, interpretación y narrativa.",
     },
     "main_menu": {
-        "en": "What would you like to do?\n\nTAROT — start a Tarot card reading\nPROFILE — add or update your personal profile\nLANGUAGE — change language\nHELP — show this menu again\n\nA Tarot reading only starts after you send TAROT.",
-        "pt": "O que você gostaria de fazer?\n\nTAROT — iniciar uma leitura de Tarô\nPERFIL — adicionar ou atualizar seu perfil pessoal\nIDIOMA — mudar o idioma\nAJUDA — mostrar este menu novamente\n\nUma leitura de Tarô só começa depois que você enviar TAROT.",
-        "es": "¿Qué te gustaría hacer?\n\nTAROT — iniciar una lectura de Tarot\nPERFIL — añadir o actualizar tu perfil personal\nIDIOMA — cambiar el idioma\nAYUDA — mostrar este menú de nuevo\n\nUna lectura de Tarot solo comienza después de que envíes TAROT.",
+        "en": "What would you like to do?\n\nTAROT — start a Tarot card reading\nPROFILE — build your symbolic profile: zodiac sign, natal chart, MBTI personality, Personal Arcana, Year Arcana, and a saved annual profile analysis\nLANGUAGE — change language\nHELP — show this menu again\n\nA Tarot reading only starts after you send TAROT.",
+        "pt": "O que você gostaria de fazer?\n\nTAROT — iniciar uma leitura de Tarô\nPERFIL — montar seu perfil simbólico: signo, mapa astral, personalidade MBTI, Arcano Pessoal, Arcano do Ano e uma análise anual salva do seu perfil\nIDIOMA — mudar o idioma\nAJUDA — mostrar este menu novamente\n\nUma leitura de Tarô só começa depois que você enviar TAROT.",
+        "es": "¿Qué te gustaría hacer?\n\nTAROT — iniciar una lectura de Tarot\nPERFIL — crear tu perfil simbólico: signo, carta natal, personalidad MBTI, Arcano Personal, Arcano del Año y un análisis anual guardado de tu perfil\nIDIOMA — cambiar el idioma\nAYUDA — mostrar este menú de nuevo\n\nUna lectura de Tarot solo comienza después de que envíes TAROT.",
     },
     "language_changed": {
         "en": "Language changed to English.",
@@ -89,14 +89,14 @@ _MESSAGES = {
         "es": "Ahora añade cualquier contexto que pueda ayudar con la lectura, o responde OMITIR si quieres continuar solo con la pregunta.",
     },
     "payment_required": {
-        "en": "💳 This Tarot reading costs US$1.00. Pay securely at the link below to continue:\n\n{url}\n\nThe cards will only be drawn after payment is confirmed. The checkout expires in 30 minutes; if it is not paid, the reading is canceled.",
-        "pt": "💳 Esta leitura de Tarô custa US$ 1,00. Pague com segurança pelo link abaixo para continuar:\n\n{url}\n\nAs cartas só serão tiradas após a confirmação do pagamento. O checkout expira em 30 minutos; se não houver pagamento, a leitura será cancelada.",
-        "es": "💳 Esta lectura de Tarot cuesta US$1,00. Paga de forma segura en el enlace para continuar:\n\n{url}\n\nLas cartas solo se sacarán después de confirmar el pago. El checkout vence en 30 minutos; si no se paga, la lectura se cancela.",
+        "en": "💳 This Tarot reading costs US$1.00. Open the link below and choose whether to pay in US dollars or Brazilian reais:\n\n{url}\n\nThe cards will only be drawn after payment is confirmed. The checkout expires in about 30 minutes; if it is not paid, the reading is canceled.",
+        "pt": "💳 Esta leitura de Tarô custa US$ 1,00. Abra o link abaixo e escolha se quer pagar em dólar ou em reais:\n\n{url}\n\nAs cartas só serão tiradas após a confirmação do pagamento. O checkout expira em cerca de 30 minutos; se não houver pagamento, a leitura será cancelada.",
+        "es": "💳 Esta lectura de Tarot cuesta US$1,00. Abre el enlace y elige si quieres pagar en dólares estadounidenses o en reales brasileños:\n\n{url}\n\nLas cartas solo se sacarán después de confirmar el pago. El checkout vence en unos 30 minutos; si no se paga, la lectura se cancela.",
     },
     "payment_pending": {
-        "en": "Payment is still pending. Complete the US$1.00 checkout to continue your Tarot reading:\n\n{url}",
-        "pt": "O pagamento ainda está pendente. Conclua o checkout de US$ 1,00 para continuar sua leitura de Tarô:\n\n{url}",
-        "es": "El pago sigue pendiente. Completa el checkout de US$1,00 para continuar tu lectura de Tarot:\n\n{url}",
+        "en": "Payment is still pending. Use the link below to choose USD or BRL and complete the checkout:\n\n{url}",
+        "pt": "O pagamento ainda está pendente. Use o link abaixo para escolher dólar ou real e concluir o checkout:\n\n{url}",
+        "es": "El pago sigue pendiente. Usa el enlace para elegir USD o BRL y completar el checkout:\n\n{url}",
     },
     "payment_confirmed": {
         "en": "✅ Payment confirmed. Your Tarot reading will continue now.",
@@ -165,9 +165,9 @@ _MESSAGES = {
     "reversed": {"en": "Reversed", "pt": "Invertida", "es": "Invertida"},
     "card_number": {"en": "Card {number}", "pt": "Carta {number}", "es": "Carta {number}"},
     "profile_menu": {
-        "en": "You can add or update the following profile information:\n\n1 — Date of birth\n2 — Birth time and natal chart\n3 — Personality test (MBTI)\n\nSend 1, 2, or 3.",
-        "pt": "Você pode adicionar ou atualizar as seguintes informações do perfil:\n\n1 — Data de nascimento\n2 — Horário de nascimento e mapa natal\n3 — Teste de personalidade (MBTI)\n\nEnvie 1, 2 ou 3.",
-        "es": "Puedes añadir o actualizar la siguiente información de tu perfil:\n\n1 — Fecha de nacimiento\n2 — Hora de nacimiento y carta natal\n3 — Test de personalidad (MBTI)\n\nEnvía 1, 2 o 3.",
+        "en": "Your profile can calculate and save your zodiac sign, Personal Arcana, Year Arcana, complete natal chart, and MBTI personality. Once those pieces are complete, the AI can also create one saved annual profile analysis.\n\n1 — Date of birth → zodiac sign + Personal Arcana + Year Arcana\n2 — Birth time/place → complete natal chart\n3 — Personality test → MBTI\n4 — Annual profile analysis → strengths, weaknesses, traits, opportunities and points of attention\n\nThe annual profile analysis can only be generated once. Send 1, 2, 3, or 4.",
+        "pt": "Seu perfil permite calcular e salvar seu signo, Arcano Pessoal, Arcano do Ano, mapa astral completo e personalidade MBTI. Depois de completar essas informações, a IA também pode criar uma análise anual do seu perfil e salvá-la.\n\n1 — Data de nascimento → signo + Arcano Pessoal + Arcano do Ano\n2 — Horário/local de nascimento → mapa astral completo\n3 — Teste de personalidade → MBTI\n4 — Análise anual do perfil → qualidades, defeitos, características, oportunidades e pontos de atenção\n\nA análise anual do perfil só pode ser gerada uma vez. Envie 1, 2, 3 ou 4.",
+        "es": "Tu perfil permite calcular y guardar tu signo, Arcano Personal, Arcano del Año, carta natal completa y personalidad MBTI. Después de completar esos datos, la IA también puede crear y guardar un análisis anual de tu perfil.\n\n1 — Fecha de nacimiento → signo + Arcano Personal + Arcano del Año\n2 — Hora/lugar de nacimiento → carta natal completa\n3 — Test de personalidad → MBTI\n4 — Análisis anual del perfil → cualidades, defectos, características, oportunidades y puntos de atención\n\nEl análisis anual del perfil solo puede generarse una vez. Envía 1, 2, 3 o 4.",
     },
     "birth_date_prompt": {
         "en": "What is your date of birth? Send it as DD/MM/YYYY. Example: 17/08/2002.",
