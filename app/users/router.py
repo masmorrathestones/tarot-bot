@@ -31,6 +31,13 @@ def map_user(user) -> UserResponse:
             birth_longitude=p.birth_longitude if p else None,
             birth_timezone=p.birth_timezone if p else None,
             natal_chart=p.natal_chart if p else None,
+            current_place=p.current_place if p else None,
+            current_latitude=p.current_latitude if p else None,
+            current_longitude=p.current_longitude if p else None,
+            current_timezone=p.current_timezone if p else None,
+            current_location_updated_at=(
+                p.current_location_updated_at if p else None
+            ),
             zodiac_sign=p.zodiac_sign if p else None,
             personal_number=p.personal_number if p else None,
             personal_arcana_number=p.personal_arcana_number if p else None,
