@@ -23,6 +23,7 @@ from app.whatsapp.repository import whatsapp_repository
 
 
 PLAN_COMMANDS = {"plan", "/plan", "plano", "/plano", "subscription", "assinatura", "suscripción", "suscripcion"}
+PROFILE_LOCATION_COMMANDS = {"5", "current location", "location", "local atual", "local", "ubicación actual", "ubicacion actual"}
 PLAN_STATES = {
     "PLAN_INFO",
     "PLAN_DAILY_TIME",
@@ -34,6 +35,7 @@ PLAN_STATES = {
     "PLAN_CHANGE_WEEKLY_DAY",
     "PLAN_CHANGE_WEEKLY_TIME",
     "PLAN_CHANGE_LOCATION",
+    "PLAN_PROFILE_CURRENT_LOCATION",
     "PLAN_MENU",
 }
 
@@ -48,7 +50,12 @@ def _with_cancel(language: str, text: str) -> str:
 
 class PlanWhatsAppService:
     def handles(self, *, state: str, text: str) -> bool:
-        return state in PLAN_STATES or text.strip().lower() in PLAN_COMMANDS
+        command = text.strip().lower()
+        return (
+            state in PLAN_STATES
+            or command in PLAN_COMMANDS
+            or (state == "PROFILE_MENU" and command in PROFILE_LOCATION_COMMANDS)
+        )
 
     def handle_text(
         self,
@@ -72,6 +79,22 @@ class PlanWhatsAppService:
         )
         language = normalize_language(conversation.language)
 
+        if conversation.state == "PROFILE_MENU" and command in PROFILE_LOCATION_COMMANDS:
+            conversation.state = "PLAN_PROFILE_CURRENT_LOCATION"
+            conversation.pending_context = None
+            db.commit()
+            current = daily_weekly_plan_service.profile_location(db, user.id)
+            messages: list[str | dict] = []
+            if current:
+                messages.append(_pick(
+                    language,
+                    f"📍 Your current saved location is {current['current_place']}. You can replace it now.",
+                    f"📍 Seu local atual salvo é {current['current_place']}. Você pode substituí-lo agora.",
+                    f"📍 Tu ubicación actual guardada es {current['current_place']}. Puedes reemplazarla ahora.",
+                ))
+            messages.append(self._current_location_prompt(language))
+            return messages
+
         if command in PLAN_COMMANDS:
             plan = daily_weekly_plan_service.get_for_user(db, user.id)
             if daily_weekly_plan_service.is_active(plan):
@@ -81,7 +104,6 @@ class PlanWhatsAppService:
                 return [self._active_menu(language, plan)]
 
             draft = daily_weekly_plan_service.get_or_create_draft(db, user.id)
-            # If setup was already completed but payment was not, let the user resume.
             if (
                 draft.daily_time is not None
                 and draft.weekly_weekday is not None
@@ -112,10 +134,41 @@ class PlanWhatsAppService:
             return None
 
         if command in {"cancel", "/cancel", "cancelar", "/cancelar"}:
+            if state == "PLAN_PROFILE_CURRENT_LOCATION":
+                conversation.state = "PROFILE_MENU"
+                conversation.pending_context = None
+                db.commit()
+                return [t(language, "cancelled"), self.decorate_profile_menu(t(language, "profile_menu"), language)]
             conversation.state = "AWAITING_QUESTION"
             conversation.pending_context = None
             db.commit()
             return [t(language, "cancelled"), self.decorate_menu(t(language, "main_menu"), language)]
+
+        if state == "PLAN_PROFILE_CURRENT_LOCATION":
+            try:
+                place = geocode_birth_place(clean, language=language)
+            except (BirthPlaceNotFoundError, BirthTimezoneNotFoundError, httpx.HTTPError, ValueError):
+                return [self._current_location_prompt(language)]
+            daily_weekly_plan_service.save_current_location(
+                db=db,
+                user_id=user.id,
+                place=place.display_name,
+                latitude=place.latitude,
+                longitude=place.longitude,
+                timezone_name=place.timezone,
+            )
+            conversation.state = "PROFILE_MENU"
+            conversation.pending_context = None
+            db.commit()
+            return [
+                _pick(
+                    language,
+                    f"📍 Current location saved as {place.display_name}. Keep it updated whenever you travel or move so location-sensitive astrology stays as accurate as possible.",
+                    f"📍 Local atual salvo como {place.display_name}. Mantenha-o atualizado sempre que viajar ou mudar de cidade para que a astrologia sensível ao local fique o mais precisa possível.",
+                    f"📍 Ubicación actual guardada como {place.display_name}. Mantenla actualizada cuando viajes o te mudes para que la astrología sensible a la ubicación sea lo más precisa posible.",
+                ),
+                self.decorate_profile_menu(t(language, "profile_menu"), language),
+            ]
 
         plan = daily_weekly_plan_service.get_or_create_draft(db, user.id)
 
