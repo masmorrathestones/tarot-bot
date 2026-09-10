@@ -22,6 +22,19 @@ def _angle_distance(a: float, b: float) -> float:
     return min(diff, 360.0 - diff)
 
 
+def _house_for_longitude(longitude: float, cusps: tuple[float, ...] | list[float]) -> int:
+    normalized = longitude % 360.0
+    for house in range(1, 13):
+        start = float(cusps[house - 1]) % 360.0
+        end = float(cusps[house % 12]) % 360.0
+        if start <= end:
+            if start <= normalized < end:
+                return house
+        elif normalized >= start or normalized < end:
+            return house
+    return 12
+
+
 def calculate_weekly_transits(
     *,
     start_local: datetime,
@@ -29,11 +42,10 @@ def calculate_weekly_transits(
     current_latitude: float,
     current_longitude: float,
 ) -> dict:
-    """Calculate seven days of deterministic transit and local-angle metadata.
+    """Calculate deterministic location-aware transit metadata for seven days.
 
-    Planetary positions are geocentric, while the local Ascendant, Midheaven,
-    and houses are recalculated for the user's current latitude/longitude. The
-    AI receives only these calculated facts and performs the interpretive step.
+    The application computes planetary positions, aspects, local Placidus houses,
+    Ascendant and Midheaven. The AI performs interpretation only.
     """
     natal_positions = natal_chart.get("positions") or {}
     result_days = []
@@ -41,10 +53,7 @@ def calculate_weekly_transits(
 
     for offset in range(7):
         local_dt = (start_local + timedelta(days=offset)).replace(
-            hour=12,
-            minute=0,
-            second=0,
-            microsecond=0,
+            hour=12, minute=0, second=0, microsecond=0
         )
         utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
         decimal_hour = utc_dt.hour + utc_dt.minute / 60.0 + utc_dt.second / 3600.0
@@ -56,12 +65,23 @@ def calculate_weekly_transits(
             swe.GREG_CAL,
         )
 
+        cusps, ascmc = swe.houses(
+            jd,
+            float(current_latitude),
+            float(current_longitude),
+            b"P",
+        )
+        ascendant = zodiac_position(float(ascmc[0]))
+        midheaven = zodiac_position(float(ascmc[1]))
+
         transits = {}
         aspects = []
         for transit_name, body in PLANETS.items():
             values, _ = swe.calc_ut(jd, body, flags)
             longitude = float(values[0] % 360.0)
-            transits[transit_name] = zodiac_position(longitude)
+            position = zodiac_position(longitude)
+            position["house"] = _house_for_longitude(longitude, cusps)
+            transits[transit_name] = position
 
             for natal_name, natal in natal_positions.items():
                 if not isinstance(natal, dict) or natal.get("longitude") is None:
@@ -70,49 +90,30 @@ def calculate_weekly_transits(
                 for aspect_name, exact_angle in MAJOR_ASPECTS.items():
                     orb = abs(distance - exact_angle)
                     if orb <= 3.0:
-                        aspects.append(
-                            {
-                                "transit": transit_name,
-                                "natal": natal_name,
-                                "aspect": aspect_name,
-                                "orb": round(orb, 2),
-                            }
-                        )
+                        aspects.append({
+                            "transit": transit_name,
+                            "natal": natal_name,
+                            "aspect": aspect_name,
+                            "orb": round(orb, 2),
+                        })
                         break
 
-        house_cusps, ascmc = swe.houses(
-            jd,
-            current_latitude,
-            current_longitude,
-            b"P",
-        )
-        local_angles = {
-            "ascendant": zodiac_position(float(ascmc[0])),
-            "midheaven": zodiac_position(float(ascmc[1])),
-        }
-        houses = [
-            {
-                "house": index,
-                **zodiac_position(float(longitude)),
-            }
-            for index, longitude in enumerate(house_cusps, start=1)
-        ]
-
-        result_days.append(
-            {
-                "date": local_dt.date().isoformat(),
-                "weekday": local_dt.strftime("%A"),
-                "transits": transits,
-                "major_aspects": sorted(aspects, key=lambda item: item["orb"])[:16],
-                "local_angles": local_angles,
-                "local_house_cusps": houses,
-            }
-        )
+        result_days.append({
+            "date": local_dt.date().isoformat(),
+            "weekday": local_dt.strftime("%A"),
+            "local_noon": local_dt.isoformat(),
+            "ascendant": ascendant,
+            "midheaven": midheaven,
+            "house_cusps": [round(float(value) % 360.0, 4) for value in cusps],
+            "transits": transits,
+            "major_aspects": sorted(aspects, key=lambda item: item["orb"])[:20],
+        })
 
     return {
         "timezone": str(start_local.tzinfo),
         "current_latitude": round(float(current_latitude), 6),
         "current_longitude": round(float(current_longitude), 6),
+        "house_system": "Placidus",
         "start_date": result_days[0]["date"],
         "days": result_days,
     }
