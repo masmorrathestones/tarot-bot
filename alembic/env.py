@@ -6,6 +6,7 @@ from app.database.base import Base
 from app.database.config import get_database_settings
 from app.persistence import models  # noqa: F401
 from app.plans import models as plan_models  # noqa: F401
+from app.social.x import models as x_models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_database_settings().url)
