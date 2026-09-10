@@ -36,6 +36,11 @@ class UserProfileResponse(BaseModel):
     birth_longitude: Optional[float] = None
     birth_timezone: Optional[str] = None
     natal_chart: Optional[dict[str, Any]] = None
+    current_place: Optional[str] = None
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    current_timezone: Optional[str] = None
+    current_location_updated_at: Optional[datetime] = None
     zodiac_sign: Optional[str] = None
     personal_number: Optional[int] = None
     personal_arcana_number: Optional[int] = None
