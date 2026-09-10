@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select
@@ -43,11 +43,29 @@ def process_due_plan_deliveries() -> int:
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
+
+        expired = db.scalars(
+            select(DailyWeeklyPlanEntity).where(
+                DailyWeeklyPlanEntity.status.in_(["ACTIVE", "CANCEL_AT_PERIOD_END"]),
+                DailyWeeklyPlanEntity.current_period_end.is_not(None),
+                DailyWeeklyPlanEntity.current_period_end <= now,
+            )
+        ).all()
+        for plan in expired:
+            plan.status = "EXPIRED"
+            plan.next_daily_at = None
+            plan.next_weekly_at = None
+        if expired:
+            db.commit()
+
         due = db.scalars(
             select(DailyWeeklyPlanEntity)
             .where(
                 DailyWeeklyPlanEntity.status.in_(["ACTIVE", "CANCEL_AT_PERIOD_END"]),
-                or_(DailyWeeklyPlanEntity.current_period_end.is_(None), DailyWeeklyPlanEntity.current_period_end > now),
+                or_(
+                    DailyWeeklyPlanEntity.current_period_end.is_(None),
+                    DailyWeeklyPlanEntity.current_period_end > now,
+                ),
                 or_(
                     DailyWeeklyPlanEntity.next_daily_at <= now,
                     DailyWeeklyPlanEntity.next_weekly_at <= now,
@@ -58,12 +76,6 @@ def process_due_plan_deliveries() -> int:
         ).all()
 
         for plan in due:
-            if plan.current_period_end is not None and plan.current_period_end <= now:
-                plan.status = "EXPIRED"
-                plan.next_daily_at = None
-                plan.next_weekly_at = None
-                db.commit()
-                continue
             if plan.next_daily_at is not None and plan.next_daily_at <= now:
                 if _process_daily(db, plan, plan.next_daily_at):
                     processed += 1
@@ -76,7 +88,12 @@ def process_due_plan_deliveries() -> int:
         db.close()
 
 
-def _claim_delivery(db: Session, plan: DailyWeeklyPlanEntity, delivery_type: str, scheduled_for: datetime) -> PlanDeliveryEntity | None:
+def _claim_delivery(
+    db: Session,
+    plan: DailyWeeklyPlanEntity,
+    delivery_type: str,
+    scheduled_for: datetime,
+) -> PlanDeliveryEntity | None:
     delivery = PlanDeliveryEntity(
         plan_id=plan.id,
         user_id=plan.user_id,
@@ -94,7 +111,11 @@ def _claim_delivery(db: Session, plan: DailyWeeklyPlanEntity, delivery_type: str
     return delivery
 
 
-def _process_daily(db: Session, plan: DailyWeeklyPlanEntity, scheduled_for: datetime) -> bool:
+def _process_daily(
+    db: Session,
+    plan: DailyWeeklyPlanEntity,
+    scheduled_for: datetime,
+) -> bool:
     delivery = _claim_delivery(db, plan, "DAILY_TAROT", scheduled_for)
     if delivery is None:
         plan.next_daily_at = daily_weekly_plan_service.next_daily_occurrence(
@@ -154,14 +175,19 @@ def _process_daily(db: Session, plan: DailyWeeklyPlanEntity, scheduled_for: date
     except Exception as exc:
         delivery.status = "FAILED"
         delivery.error_message = str(exc)[:2000]
-        # Retry this delivery later without allowing rapid duplicate attempts.
-        plan.next_daily_at = datetime.now(timezone.utc).replace(second=0, microsecond=0)
-        plan.next_daily_at = plan.next_daily_at + __import__("datetime").timedelta(minutes=15)
+        plan.next_daily_at = (
+            datetime.now(timezone.utc).replace(second=0, microsecond=0)
+            + timedelta(minutes=15)
+        )
         db.commit()
         return False
 
 
-def _process_weekly(db: Session, plan: DailyWeeklyPlanEntity, scheduled_for: datetime) -> bool:
+def _process_weekly(
+    db: Session,
+    plan: DailyWeeklyPlanEntity,
+    scheduled_for: datetime,
+) -> bool:
     delivery = _claim_delivery(db, plan, "WEEKLY_ASTROLOGY", scheduled_for)
     if delivery is None:
         plan.next_weekly_at = daily_weekly_plan_service.next_weekly_occurrence(
@@ -178,7 +204,12 @@ def _process_weekly(db: Session, plan: DailyWeeklyPlanEntity, scheduled_for: dat
         p = user.profile
         location = daily_weekly_plan_service.profile_location(db, user.id)
         if not p or not p.natal_chart or not location:
-            raise ValueError("Weekly astrology requires a complete natal chart and current location.")
+            raise ValueError(
+                "Weekly astrology requires a complete natal chart and current location."
+            )
+        if location.get("current_latitude") is None or location.get("current_longitude") is None:
+            raise ValueError("Current location coordinates are missing.")
+
         conversation, _ = whatsapp_repository.get_or_create_conversation_by_number(
             db,
             whatsapp_number=user.whatsapp_number,
@@ -187,7 +218,12 @@ def _process_weekly(db: Session, plan: DailyWeeklyPlanEntity, scheduled_for: dat
         language = normalize_language(conversation.language)
         tz_name = str(location["current_timezone"])
         local_now = datetime.now(timezone.utc).astimezone(ZoneInfo(tz_name))
-        transits = calculate_weekly_transits(start_local=local_now, natal_chart=p.natal_chart)
+        transits = calculate_weekly_transits(
+            start_local=local_now,
+            natal_chart=p.natal_chart,
+            current_latitude=float(location["current_latitude"]),
+            current_longitude=float(location["current_longitude"]),
+        )
         analysis = plan_analysis_service.weekly_astrology_analysis(
             natal_chart=p.natal_chart,
             current_place=str(location["current_place"]),
@@ -220,8 +256,10 @@ def _process_weekly(db: Session, plan: DailyWeeklyPlanEntity, scheduled_for: dat
     except Exception as exc:
         delivery.status = "FAILED"
         delivery.error_message = str(exc)[:2000]
-        plan.next_weekly_at = datetime.now(timezone.utc).replace(second=0, microsecond=0)
-        plan.next_weekly_at = plan.next_weekly_at + __import__("datetime").timedelta(minutes=30)
+        plan.next_weekly_at = (
+            datetime.now(timezone.utc).replace(second=0, microsecond=0)
+            + timedelta(minutes=30)
+        )
         db.commit()
         return False
 
