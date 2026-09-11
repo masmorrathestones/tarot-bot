@@ -556,6 +556,10 @@ class RitualWhatsAppConversationService:
             return [spread_message, self._intuition_permission_prompt(language)]
 
         conversation.state = "RITUAL_ANALYZING"
+        reading_persistence_service.schedule_analysis(
+            db=db,
+            reading_id=reading.id,
+        )
         whatsapp_tarot_flow_store.save(
             db,
             conversation.id,
@@ -577,6 +581,10 @@ class RitualWhatsAppConversationService:
         language: str,
     ) -> list[str | dict]:
         conversation.state = "RITUAL_ANALYZING"
+        reading_persistence_service.schedule_analysis(
+            db=db,
+            reading_id=reading_id,
+        )
         whatsapp_tarot_flow_store.save(
             db,
             conversation.id,
