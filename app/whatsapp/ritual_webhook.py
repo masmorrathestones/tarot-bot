@@ -7,6 +7,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.database.session import SessionLocal, get_db
+from app.past_life.service import past_life_conversation_service
 from app.plans.whatsapp import plan_whatsapp_service
 from app.tarot.persistence_service import reading_persistence_service
 from app.whatsapp.config import get_whatsapp_settings
@@ -187,6 +188,11 @@ def _handle_text(
         )
         if plan_messages is not None:
             return _decorate_navigation_messages(db, from_number, plan_messages)
+
+    if past_life_conversation_service.handles(state=conversation.state, text=text):
+        messages = past_life_conversation_service.handle_text(
+            db=db, from_number=from_number, display_name=display_name, text=text)
+        return _decorate_navigation_messages(db, from_number, messages)
 
     messages = ritual_whatsapp_conversation_service.handle_text(
         db=db,
