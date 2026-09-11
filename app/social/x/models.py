@@ -35,3 +35,32 @@ class ScheduledXPostEntity(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class XReplyOpportunityEntity(Base):
+    __tablename__ = "x_reply_opportunities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tweet_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    tweet_text: Mapped[str] = mapped_column(Text, nullable=False)
+    author_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    author_username: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
+    matched_query: Mapped[str] = mapped_column(Text, nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    suggested_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="GENERATED", index=True
+    )
+    x_reply_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    discovered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
