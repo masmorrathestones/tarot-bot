@@ -30,6 +30,7 @@ class TarotPaymentService:
         user_id: int,
         conversation_id: int,
         language: str,
+        purpose: str = "tarot_reading",
     ) -> TarotPaymentEntity:
         """Create the payment gate for a Tarot reading.
 
@@ -45,6 +46,7 @@ class TarotPaymentService:
                 settings=settings,
                 user_id=user_id,
                 conversation_id=conversation_id,
+                purpose=purpose,
             )
 
         if not settings.stripe_secret_key:
@@ -61,6 +63,7 @@ class TarotPaymentService:
             conversation_id=conversation_id,
             language=language,
             currency="usd",
+            purpose=purpose,
             expires_at=expires_at,
         )
 
@@ -74,8 +77,9 @@ class TarotPaymentService:
             provider_session_id=session.id,
             checkout_choice_token=choice_token,
             checkout_url=choice_url,
-            amount_cents=settings.usd_amount_cents,
+            amount_cents=settings.amount_for_currency("usd", purpose),
             currency="usd",
+            purpose=purpose,
             status="PENDING",
             expires_at=expires_at,
         )
@@ -139,13 +143,14 @@ class TarotPaymentService:
             conversation_id=payment.conversation_id,
             language=language,
             currency=normalized,
+            purpose=payment.purpose,
             expires_at=expires_at,
         )
 
         payment.provider_session_id = session.id
         payment.checkout_url = session.url
         payment.currency = normalized
-        payment.amount_cents = settings.amount_for_currency(normalized)
+        payment.amount_cents = settings.amount_for_currency(normalized, payment.purpose)
         payment.expires_at = expires_at
         db.commit()
         db.refresh(payment)
@@ -286,6 +291,7 @@ class TarotPaymentService:
         settings: PaymentSettings,
         user_id: int,
         conversation_id: int,
+        purpose: str,
     ) -> TarotPaymentEntity:
         choice_token = secrets.token_urlsafe(32)
         session_id = f"admin_{secrets.token_urlsafe(24)}"
@@ -305,6 +311,7 @@ class TarotPaymentService:
             checkout_url=bypass_url,
             amount_cents=0,
             currency="usd",
+            purpose=purpose,
             status="PENDING",
             expires_at=expires_at,
         )
@@ -329,13 +336,14 @@ class TarotPaymentService:
         conversation_id: int,
         language: str,
         currency: str,
+        purpose: str,
         expires_at: datetime,
     ):
         stripe.api_key = settings.stripe_secret_key
-        product_name = {
-            "pt": "Leitura de Tarô",
-            "es": "Lectura de Tarot",
-        }.get(language, "Tarot reading")
+        if purpose == "past_life_reading":
+            product_name = {"pt": "Tarô de Vidas Passadas", "es": "Tarot de Vidas Pasadas"}.get(language, "Past Life Tarot")
+        else:
+            product_name = {"pt": "Leitura de Tarô", "es": "Lectura de Tarot"}.get(language, "Tarot reading")
 
         try:
             session = stripe.checkout.Session.create(
@@ -345,7 +353,7 @@ class TarotPaymentService:
                     {
                         "price_data": {
                             "currency": currency,
-                            "unit_amount": settings.amount_for_currency(currency),
+                            "unit_amount": settings.amount_for_currency(currency, purpose),
                             "product_data": {"name": product_name},
                         },
                         "quantity": 1,
@@ -354,7 +362,7 @@ class TarotPaymentService:
                 metadata={
                     "user_id": str(user_id),
                     "conversation_id": str(conversation_id),
-                    "purpose": "tarot_reading",
+                    "purpose": purpose,
                     "currency": currency,
                 },
                 success_url=(
