@@ -8,6 +8,7 @@ from app.landing.router import router as landing_router
 from app.payments.router import router as payments_router
 from app.plans.router import router as plans_router
 from app.plans.scheduler import plan_scheduler_loop
+from app.social.x.manual_page import router as x_manual_reply_router
 from app.social.x.router import router as x_scheduler_router
 from app.social.x.scheduler import x_scheduler_loop
 from app.tarot.router import router as tarot_router
@@ -26,6 +27,7 @@ app.include_router(whatsapp_router)
 app.include_router(payments_router)
 app.include_router(plans_router)
 app.include_router(x_scheduler_router)
+app.include_router(x_manual_reply_router)
 app.include_router(assets_router)
 app.include_router(ritual_assets_router)
 app.include_router(landing_router)
