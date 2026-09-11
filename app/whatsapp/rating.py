@@ -126,9 +126,11 @@ class ReadingRatingWhatsAppService:
     @staticmethod
     def _note_state(state: str) -> tuple[int, int] | None:
         parts = state[len("RATING_NOTE_"):].rsplit("_", 1)
+        if len(parts) != 2:
+            return None
         try:
-            return int(parts[0]), int(parts[1]) if len(parts) == 2 else None
-        except (ValueError, IndexError):
+            return int(parts[0]), int(parts[1])
+        except ValueError:
             return None
 
     @staticmethod
