@@ -24,7 +24,7 @@ MYSTIC_INTUITION_DESCRIPTIONS = {
     "Chaotic Evil": "Emphasize disruptive risk, impulsive conflict, destructive rupture, instability, betrayal of expectations, uncontrolled escalation, or situations where disorder can amplify an already difficult tendency.",
 }
 
-INTUITION_CHANCE_BASIS_POINTS = 800
+INTUITION_CHANCE_BASIS_POINTS = 1000
 INTUITION_ROLL_SCALE = 10_000
 MAX_INTUITIONS = 2
 
