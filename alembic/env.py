@@ -4,6 +4,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.database.base import Base
 from app.database.config import get_database_settings
+from app import feature_models  # noqa: F401
 from app.persistence import models  # noqa: F401
 from app.plans import models as plan_models  # noqa: F401
 from app.social.x import models as x_models  # noqa: F401
