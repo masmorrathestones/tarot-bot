@@ -24,6 +24,8 @@ class XSettings:
     prospecting_interval_seconds: int = 7200
     prospecting_min_score: int = 5
     prospecting_max_per_run: int = 5
+    prospecting_auto_approve_enabled: bool = True
+    prospecting_auto_approve_delay_seconds: int = 600
     prospect_queries: tuple[str, ...] = DEFAULT_PROSPECT_QUERIES
 
     @property
@@ -83,6 +85,14 @@ def get_x_settings() -> XSettings:
         prospecting_max_per_run=max(
             1,
             min(20, int(os.getenv("X_PROSPECTING_MAX_PER_RUN", "5"))),
+        ),
+        prospecting_auto_approve_enabled=_env_bool(
+            "X_PROSPECTING_AUTO_APPROVE_ENABLED",
+            True,
+        ),
+        prospecting_auto_approve_delay_seconds=max(
+            60,
+            int(os.getenv("X_PROSPECTING_AUTO_APPROVE_DELAY_SECONDS", "600")),
         ),
         prospect_queries=_prospect_queries(),
     )
