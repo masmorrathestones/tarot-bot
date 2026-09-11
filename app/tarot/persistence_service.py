@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import random
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -20,6 +21,10 @@ class ReadingNotFoundError(ValueError):
 
 class ReadingRetryNotAllowedError(ValueError):
     pass
+
+
+ANALYSIS_DELAY_MIN_SECONDS = 4 * 60
+ANALYSIS_DELAY_MAX_SECONDS = 10 * 60
 
 
 class ReadingPersistenceService:
@@ -171,6 +176,19 @@ class ReadingPersistenceService:
         reading.error_message = None
         reading.completed_at = datetime.now(timezone.utc)
         db.commit()
+        return self.get(db, reading_id)
+
+    def schedule_analysis(self, *, db: Session, reading_id: int) -> ReadingEntity:
+        reading = self.get(db, reading_id)
+        if reading.scheduled_analysis_at is None:
+            delay_seconds = random.randint(
+                ANALYSIS_DELAY_MIN_SECONDS,
+                ANALYSIS_DELAY_MAX_SECONDS,
+            )
+            reading.scheduled_analysis_at = datetime.now(timezone.utc) + timedelta(
+                seconds=delay_seconds
+            )
+            db.commit()
         return self.get(db, reading_id)
 
     def mark_failed(

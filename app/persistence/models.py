@@ -133,6 +133,9 @@ class ReadingEntity(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True)
     )
+    scheduled_analysis_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
 
     user: Mapped["UserEntity"] = relationship(back_populates="readings")
     drawn_cards: Mapped[list["DrawnCardEntity"]] = relationship(
