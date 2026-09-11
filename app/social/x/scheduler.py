@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import exists, or_, select
 
 from app.database.session import SessionLocal
+from app.runtime_settings import runtime_setting_enabled
 from app.social.x.campaign_loader import import_latest_campaign
 from app.social.x.client import x_client
 from app.social.x.config import get_x_settings
@@ -33,14 +34,31 @@ async def x_scheduler_loop() -> None:
             pass
 
         now_monotonic = time.monotonic()
-        if settings.prospecting_enabled and now_monotonic >= next_prospecting_at:
+        db_prospecting_enabled = False
+        if settings.prospecting_enabled:
+            try:
+                db_prospecting_enabled = await asyncio.to_thread(_db_prospecting_enabled)
+            except Exception:
+                db_prospecting_enabled = False
+
+        if db_prospecting_enabled and now_monotonic >= next_prospecting_at:
             next_prospecting_at = now_monotonic + settings.prospecting_interval_seconds
             try:
                 await asyncio.to_thread(discover_x_opportunities)
             except Exception:
                 pass
+        elif not db_prospecting_enabled:
+            next_prospecting_at = 0.0
 
         await asyncio.sleep(settings.scheduler_interval_seconds)
+
+
+def _db_prospecting_enabled() -> bool:
+    db = SessionLocal()
+    try:
+        return runtime_setting_enabled(db, "x_prospecting_enabled", default=False)
+    finally:
+        db.close()
 
 
 def process_due_x_posts() -> int:
