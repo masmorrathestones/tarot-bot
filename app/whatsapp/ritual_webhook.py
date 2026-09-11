@@ -9,6 +9,7 @@ from app.database.session import SessionLocal, get_db
 from app.plans.whatsapp import plan_whatsapp_service
 from app.whatsapp.config import get_whatsapp_settings
 from app.whatsapp.i18n import normalize_language, t
+from app.whatsapp.rating import reading_rating_whatsapp_service
 from app.whatsapp.repository import whatsapp_repository
 from app.whatsapp.ritual_conversation import ritual_whatsapp_conversation_service
 from app.whatsapp.schemas import TestWhatsAppMessageRequest, TestWhatsAppMessageResponse
@@ -166,6 +167,15 @@ def _handle_text(
             [t(language, "about_project"), t(language, "main_menu")],
         )
 
+    if reading_rating_whatsapp_service.handles(state=conversation.state, text=text):
+        rating_messages = reading_rating_whatsapp_service.handle_text(
+            db=db,
+            from_number=from_number,
+            text=text,
+        )
+        if rating_messages is not None:
+            return _decorate_navigation_messages(db, from_number, rating_messages)
+
     if plan_whatsapp_service.handles(state=conversation.state, text=text):
         plan_messages = plan_whatsapp_service.handle_text(
             db=db,
@@ -196,13 +206,25 @@ def _decorate_navigation_messages(
     decorated: list[str | dict] = []
     for message in messages:
         if isinstance(message, str) and message == main_menu:
-            decorated.append(plan_whatsapp_service.decorate_menu(message, language))
+            menu = plan_whatsapp_service.decorate_menu(message, language)
+            decorated.append(_decorate_rating_menu(menu, language))
         elif isinstance(message, str) and profile_menu in message:
             decorated_profile = plan_whatsapp_service.decorate_profile_menu(profile_menu, language)
             decorated.append(message.replace(profile_menu, decorated_profile, 1))
         else:
             decorated.append(message)
     return decorated
+
+
+def _decorate_rating_menu(menu: str, language: str) -> str:
+    line = {
+        "en": "RATE READING — rate one of your latest readings with 1–5 stars and an optional note",
+        "pt": "AVALIAR TIRAGEM — avaliar uma das suas últimas tiragens com 1–5 estrelas e uma observação opcional",
+        "es": "CALIFICAR TIRADA — calificar una de tus últimas tiradas con 1–5 estrellas y una observación opcional",
+    }[normalize_language(language)]
+    if line in menu:
+        return menu
+    return f"{menu}\n{line}"
 
 
 def _process_registered_message(
