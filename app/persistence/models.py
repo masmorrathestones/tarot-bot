@@ -235,6 +235,7 @@ class TarotPaymentEntity(Base):
     checkout_url: Mapped[str] = mapped_column(Text, nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="usd")
+    purpose: Mapped[str] = mapped_column(String(40), nullable=False, default="tarot_reading")
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="PENDING", index=True
     )
@@ -247,6 +248,33 @@ class TarotPaymentEntity(Base):
         DateTime(timezone=True), nullable=False,
         server_default=func.now(), onupdate=func.now()
     )
+
+
+class PastLifeReadingEntity(Base):
+    __tablename__ = "past_life_readings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("whatsapp_conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="AWAITING_MEDITATION", index=True)
+    meditation_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    meditation_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    meditation_word: Mapped[Optional[str]] = mapped_column(String(120))
+    word_arcana_number: Mapped[Optional[int]] = mapped_column(Integer)
+    word_arcana_name: Mapped[Optional[str]] = mapped_column(String(120))
+    profile_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    personality_cards: Mapped[Optional[list]] = mapped_column(JSON)
+    personality_analysis: Mapped[Optional[str]] = mapped_column(Text)
+    theme_candidates: Mapped[Optional[list]] = mapped_column(JSON)
+    selected_theme: Mapped[Optional[str]] = mapped_column(String(300))
+    intuitive_question: Mapped[Optional[str]] = mapped_column(Text)
+    intuitive_answer: Mapped[Optional[bool]] = mapped_column(Boolean)
+    second_cards: Mapped[Optional[list]] = mapped_column(JSON)
+    final_analysis: Mapped[Optional[str]] = mapped_column(Text)
+    helped_answer: Mapped[Optional[bool]] = mapped_column(Boolean)
+    helped_answer_text: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class WhatsAppMessageEventEntity(Base):
