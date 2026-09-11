@@ -29,3 +29,28 @@ class ScheduledXPostResponse(BaseModel):
     sent_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class ApproveXReplyOpportunityRequest(BaseModel):
+    reply_text: str | None = Field(default=None, min_length=1, max_length=280)
+
+
+class XReplyOpportunityResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    tweet_id: str
+    tweet_text: str
+    author_id: str | None
+    author_username: str | None
+    language: str | None
+    matched_query: str
+    score: int
+    suggested_reply: str | None
+    status: str
+    x_reply_id: str | None
+    error_message: str | None
+    discovered_at: datetime
+    replied_at: datetime | None
+    created_at: datetime
+    updated_at: datetime

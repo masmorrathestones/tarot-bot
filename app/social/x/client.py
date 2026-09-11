@@ -87,6 +87,64 @@ def _resolve_media_path(media_path: str) -> Path:
 
 
 class XClient:
+    def search_recent(self, query: str, *, max_results: int = 10) -> list[dict[str, str | None]]:
+        settings = get_x_settings()
+        if not settings.bearer_token:
+            raise XConfigurationError(
+                "X_BEARER_TOKEN is not configured for recent-search requests."
+            )
+
+        url = f"{settings.api_base_url}/2/tweets/search/recent"
+        try:
+            response = httpx.get(
+                url,
+                headers={"Authorization": f"Bearer {settings.bearer_token}"},
+                params={
+                    "query": query,
+                    "max_results": max(10, min(100, max_results)),
+                    "tweet.fields": "author_id,created_at,lang",
+                    "expansions": "author_id",
+                    "user.fields": "username",
+                },
+                timeout=20.0,
+            )
+        except httpx.HTTPError as exc:
+            raise XProviderError(f"X recent search failed: {exc}") from exc
+
+        if response.status_code != 200:
+            detail = response.text.strip()
+            raise XProviderError(
+                f"X recent search returned HTTP {response.status_code}: {detail[:1500]}"
+            )
+
+        try:
+            payload = response.json()
+            users = {
+                str(user.get("id")): str(user.get("username") or "")
+                for user in (payload.get("includes") or {}).get("users", [])
+                if user.get("id")
+            }
+            rows: list[dict[str, str | None]] = []
+            for tweet in payload.get("data") or []:
+                tweet_id = str(tweet.get("id") or "").strip()
+                text = str(tweet.get("text") or "").strip()
+                if not tweet_id or not text:
+                    continue
+                author_id = str(tweet.get("author_id") or "").strip() or None
+                rows.append(
+                    {
+                        "tweet_id": tweet_id,
+                        "text": text,
+                        "author_id": author_id,
+                        "author_username": users.get(author_id or "") or None,
+                        "language": str(tweet.get("lang") or "").strip() or None,
+                        "created_at": str(tweet.get("created_at") or "").strip() or None,
+                    }
+                )
+            return rows
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise XProviderError("X recent search returned invalid JSON.") from exc
+
     def upload_image(self, media_path: str) -> str:
         path = _resolve_media_path(media_path)
         if path.stat().st_size > 5 * 1024 * 1024:

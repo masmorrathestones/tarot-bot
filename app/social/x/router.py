@@ -7,7 +7,19 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.social.x.config import get_x_settings
-from app.social.x.schemas import ScheduleXPostRequest, ScheduledXPostResponse
+from app.social.x.prospecting import (
+    XReplyOpportunityNotFoundError,
+    XReplyOpportunityStateError,
+    approve_opportunity,
+    list_opportunities,
+    reject_opportunity,
+)
+from app.social.x.schemas import (
+    ApproveXReplyOpportunityRequest,
+    ScheduleXPostRequest,
+    ScheduledXPostResponse,
+    XReplyOpportunityResponse,
+)
 from app.social.x.service import (
     XScheduledPostNotFoundError,
     XScheduledPostStateError,
@@ -99,4 +111,58 @@ def retry_x_post(
     except XScheduledPostNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except XScheduledPostStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/opportunities",
+    response_model=list[XReplyOpportunityResponse],
+    dependencies=[Depends(_require_admin)],
+)
+def list_x_reply_opportunities(
+    status_filter: str | None = Query(default="GENERATED", alias="status"),
+    limit: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> list[XReplyOpportunityResponse]:
+    return list_opportunities(db=db, status=status_filter, limit=limit)
+
+
+@router.post(
+    "/opportunities/{opportunity_id}/approve",
+    response_model=XReplyOpportunityResponse,
+    dependencies=[Depends(_require_admin)],
+)
+def approve_x_reply_opportunity(
+    opportunity_id: int,
+    request: ApproveXReplyOpportunityRequest,
+    db: Session = Depends(get_db),
+) -> XReplyOpportunityResponse:
+    try:
+        return approve_opportunity(
+            db=db,
+            opportunity_id=opportunity_id,
+            reply_text=request.reply_text,
+        )
+    except XReplyOpportunityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except XReplyOpportunityStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post(
+    "/opportunities/{opportunity_id}/reject",
+    response_model=XReplyOpportunityResponse,
+    dependencies=[Depends(_require_admin)],
+)
+def reject_x_reply_opportunity(
+    opportunity_id: int,
+    db: Session = Depends(get_db),
+) -> XReplyOpportunityResponse:
+    try:
+        return reject_opportunity(db=db, opportunity_id=opportunity_id)
+    except XReplyOpportunityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except XReplyOpportunityStateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
