@@ -1,4 +1,5 @@
 import json
+import random
 import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -25,7 +26,8 @@ from app.whatsapp.webhook import (
 router = APIRouter(prefix="/api/whatsapp", tags=["WhatsApp"])
 
 CARD_SEND_INTERVAL_SECONDS = 3
-AFTER_LAST_CARD_BEFORE_ANALYSIS_SECONDS = 10.0
+ANALYSIS_DELAY_MIN_SECONDS = 8 * 60
+ANALYSIS_DELAY_MAX_SECONDS = 22 * 60
 AFTER_OVERALL_NARRATIVE_SECONDS = 10.0
 FINAL_SYNTHESIS_DELAY_SECONDS = 20.0
 NARRATIVE_CAPTION_MAX_CHARS = 700
@@ -287,12 +289,12 @@ def _dispatch_outgoing(*, db: Session, to: str, messages: list[str | dict]) -> N
             continue
 
         if _is_analysis_wait_message(message):
-            time.sleep(AFTER_LAST_CARD_BEFORE_ANALYSIS_SECONDS)
             language = normalize_language(str(message.get("language") or _conversation_language(db, to)))
             _send_and_record(db=db, to=to, message=t(language, "analysis_wait"))
             continue
 
         if isinstance(message, dict) and message.get("type") == "deferred_tarot_analysis":
+            time.sleep(random.randint(ANALYSIS_DELAY_MIN_SECONDS, ANALYSIS_DELAY_MAX_SECONDS))
             follow_up = ritual_whatsapp_conversation_service.complete_analysis(
                 db=db,
                 from_number=to,
