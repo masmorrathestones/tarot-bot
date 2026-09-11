@@ -27,7 +27,13 @@ def upgrade() -> None:
         sa.column("key", sa.String),
         sa.column("value", sa.String),
     )
-    op.bulk_insert(runtime_settings, [{"key": "x_prospecting_enabled", "value": "false"}])
+    op.bulk_insert(
+        runtime_settings,
+        [
+            {"key": "x_prospecting_enabled", "value": "false"},
+            {"key": "daily_referral_prompt_date", "value": ""},
+        ],
+    )
 
     op.create_table(
         "reading_ratings",
