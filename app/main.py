@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.assets.router import router as assets_router
 from app.assets.ritual_router import router as ritual_assets_router
+from app.landing.router import router as landing_router
 from app.payments.router import router as payments_router
 from app.plans.router import router as plans_router
 from app.plans.scheduler import plan_scheduler_loop
@@ -27,6 +28,7 @@ app.include_router(plans_router)
 app.include_router(x_scheduler_router)
 app.include_router(assets_router)
 app.include_router(ritual_assets_router)
+app.include_router(landing_router)
 
 
 @app.on_event("startup")
