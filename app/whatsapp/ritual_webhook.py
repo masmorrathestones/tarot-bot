@@ -27,6 +27,12 @@ AFTER_LAST_CARD_BEFORE_ANALYSIS_SECONDS = 10.0
 AFTER_OVERALL_NARRATIVE_SECONDS = 10.0
 FINAL_SYNTHESIS_DELAY_SECONDS = 20.0
 NARRATIVE_CAPTION_MAX_CHARS = 700
+ABOUT_COMMANDS = {
+    "about", "/about",
+    "sobre", "/sobre",
+    "acerca", "/acerca",
+    "acerca de", "sobre el proyecto", "sobre o projeto",
+}
 
 
 @router.get("/webhook", response_class=PlainTextResponse)
@@ -151,6 +157,15 @@ def _handle_text(
         db,
         whatsapp_number=from_number,
     )
+
+    if text.strip().lower() in ABOUT_COMMANDS:
+        language = normalize_language(conversation.language)
+        return _decorate_navigation_messages(
+            db,
+            from_number,
+            [t(language, "about_project"), t(language, "main_menu")],
+        )
+
     if plan_whatsapp_service.handles(state=conversation.state, text=text):
         plan_messages = plan_whatsapp_service.handle_text(
             db=db,
