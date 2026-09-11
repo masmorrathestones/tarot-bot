@@ -1,6 +1,6 @@
 """runtime settings and reading ratings
 
-Revision ID: 0020_runtime_settings_and_reading_ratings
+Revision ID: 0020_feedback_runtime
 Revises: 0019_x_reply_opportunities
 Create Date: 2026-09-11
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0020_runtime_settings_and_reading_ratings"
+revision = "0020_feedback_runtime"
 down_revision = "0019_x_reply_opportunities"
 branch_labels = None
 depends_on = None
