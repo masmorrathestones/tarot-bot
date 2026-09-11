@@ -10,6 +10,7 @@ from app.plans.whatsapp import plan_whatsapp_service
 from app.whatsapp.config import get_whatsapp_settings
 from app.whatsapp.i18n import normalize_language, t
 from app.whatsapp.rating import reading_rating_whatsapp_service
+from app.whatsapp.referral_prompt import maybe_daily_referral_prompt
 from app.whatsapp.repository import whatsapp_repository
 from app.whatsapp.ritual_conversation import ritual_whatsapp_conversation_service
 from app.whatsapp.schemas import TestWhatsAppMessageRequest, TestWhatsAppMessageResponse
@@ -252,6 +253,10 @@ def _process_registered_message(
                 display_name=display_name,
                 text=text,
             )
+            language = _conversation_language(db, from_number)
+            referral_prompt = maybe_daily_referral_prompt(db, language)
+            if referral_prompt:
+                outgoing.append(referral_prompt)
 
         _dispatch_outgoing(db=db, to=from_number, messages=outgoing)
         whatsapp_repository.mark_event_processed(db, whatsapp_message_id=whatsapp_message_id)
