@@ -149,9 +149,9 @@ _MESSAGES = {
         "es": "No pude seleccionar la tirada más adecuada en este momento. Inténtalo de nuevo.",
     },
     "analysis_wait": {
-        "en": "🔍 I'm analyzing the complete spread now. Please wait while I finish the full reading.\n\nSend CANCEL if you want to stop this reading.",
-        "pt": "🔍 Estou analisando a tiragem completa agora. Aguarde enquanto termino a leitura.\n\nEnvie CANCELAR se quiser interromper esta leitura.",
-        "es": "🔍 Estoy analizando la tirada completa ahora. Espera mientras termino la lectura.\n\nEnvía CANCELAR si quieres detener esta lectura.",
+        "en": "🔍 I'm going to carefully analyze your complete spread now. This should take around 20 minutes. I'll send the full reading here as soon as it's ready.\n\nSend CANCEL if you want to stop this reading.",
+        "pt": "🔍 Agora vou analisar cuidadosamente a sua tiragem completa. Isso deve levar cerca de 20 minutos. Enviarei a leitura completa por aqui assim que estiver pronta.\n\nEnvie CANCELAR se quiser interromper esta leitura.",
+        "es": "🔍 Ahora voy a analizar cuidadosamente tu tirada completa. Esto debería tardar unos 20 minutos. Te enviaré la lectura completa por aquí en cuanto esté lista.\n\nEnvía CANCELAR si quieres detener esta lectura.",
     },
     "already_analyzing": {
         "en": "Your cards have already been drawn and the reading is being analyzed.",
