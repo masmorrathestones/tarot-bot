@@ -36,10 +36,10 @@ def _payment_language(db: Session, conversation_id: int) -> str:
     return normalize_language(conversation.language if conversation else "en")
 
 
-def _choice_html(*, token: str, language: str) -> str:
+def _choice_html(*, token: str, language: str, purpose: str = "tarot_reading") -> str:
     settings = get_payment_settings()
-    usd = _money("usd", settings.usd_amount_cents)
-    brl = _money("brl", settings.brl_amount_cents)
+    usd = _money("usd", settings.amount_for_currency("usd", purpose))
+    brl = _money("brl", settings.amount_for_currency("brl", purpose))
     labels = {
         "en": {
             "title": "Choose payment currency",
@@ -151,7 +151,7 @@ def choose_payment_currency(
         )
 
     language = _payment_language(db, payment.conversation_id)
-    return _choice_html(token=choice_token, language=language)
+    return _choice_html(token=choice_token, language=language, purpose=payment.purpose)
 
 
 @router.get("/choose/{choice_token}/start")
@@ -180,9 +180,10 @@ def start_checkout_in_currency(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     conversation = db.get(WhatsAppConversationEntity, payment.conversation_id)
-    if conversation is not None and conversation.state == "RITUAL_AWAITING_PAYMENT":
+    if conversation is not None and conversation.state in {"RITUAL_AWAITING_PAYMENT", "PAST_LIFE_AWAITING_PAYMENT"}:
         flow = whatsapp_tarot_flow_store.get(db, conversation.id)
-        flow["payment_session_id"] = payment.provider_session_id
+        key = "past_life_payment_session_id" if payment.purpose == "past_life_reading" else "payment_session_id"
+        flow[key] = payment.provider_session_id
         flow["payment_url"] = payment.checkout_url
         flow["payment_currency"] = payment.currency
         whatsapp_tarot_flow_store.save(db, conversation.id, flow)
@@ -206,11 +207,13 @@ def admin_payment_bypass(
 
     language = _payment_language(db, payment.conversation_id)
     if changed:
-        to_number, messages = ritual_whatsapp_conversation_service.resume_after_payment(
-            db=db,
-            conversation_id=payment.conversation_id,
-            provider_session_id=payment.provider_session_id,
-        )
+        if payment.purpose == "past_life_reading":
+            from app.past_life.service import past_life_conversation_service
+            to_number, messages = past_life_conversation_service.resume_after_payment(
+                db=db, conversation_id=payment.conversation_id, provider_session_id=payment.provider_session_id)
+        else:
+            to_number, messages = ritual_whatsapp_conversation_service.resume_after_payment(
+                db=db, conversation_id=payment.conversation_id, provider_session_id=payment.provider_session_id)
         if to_number and messages:
             from app.whatsapp.ritual_webhook import _dispatch_outgoing
 
@@ -268,11 +271,13 @@ async def stripe_webhook(
         if payment is None or not changed:
             return {"status": "already_processed"}
 
-        to_number, messages = ritual_whatsapp_conversation_service.resume_after_payment(
-            db=db,
-            conversation_id=payment.conversation_id,
-            provider_session_id=session_id,
-        )
+        if payment.purpose == "past_life_reading":
+            from app.past_life.service import past_life_conversation_service
+            to_number, messages = past_life_conversation_service.resume_after_payment(
+                db=db, conversation_id=payment.conversation_id, provider_session_id=session_id)
+        else:
+            to_number, messages = ritual_whatsapp_conversation_service.resume_after_payment(
+                db=db, conversation_id=payment.conversation_id, provider_session_id=session_id)
         if to_number and messages:
             from app.whatsapp.ritual_webhook import _dispatch_outgoing
 
@@ -287,11 +292,13 @@ async def stripe_webhook(
         if payment is None or not changed:
             return {"status": "already_processed"}
 
-        to_number, messages = ritual_whatsapp_conversation_service.cancel_unpaid_payment(
-            db=db,
-            conversation_id=payment.conversation_id,
-            provider_session_id=session_id,
-        )
+        if payment.purpose == "past_life_reading":
+            from app.past_life.service import past_life_conversation_service
+            to_number, messages = past_life_conversation_service.cancel_unpaid_payment(
+                db=db, conversation_id=payment.conversation_id, provider_session_id=session_id)
+        else:
+            to_number, messages = ritual_whatsapp_conversation_service.cancel_unpaid_payment(
+                db=db, conversation_id=payment.conversation_id, provider_session_id=session_id)
         if to_number and messages:
             from app.whatsapp.ritual_webhook import _dispatch_outgoing
 
