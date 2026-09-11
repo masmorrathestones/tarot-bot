@@ -44,12 +44,10 @@ def maybe_daily_referral_prompt(db: Session, language: str) -> str | None:
     if row.value == today:
         return None
 
-    # Randomize which active conversation gets the day's prompt.
-    # With low traffic, the first interaction later in the day is always eligible.
     now_hour = datetime.now(timezone.utc).hour
     probability = 1.0 if now_hour >= 20 else 0.35
     if random.random() > probability:
-        db.rollback()
+        db.commit()
         return None
 
     language = normalize_language(language)
