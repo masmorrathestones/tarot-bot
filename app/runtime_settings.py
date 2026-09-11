@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.persistence.models import RuntimeSettingEntity
+from app.feature_models import RuntimeSettingEntity
 
 
 TRUE_VALUES = {"1", "true", "yes", "on", "enabled"}
