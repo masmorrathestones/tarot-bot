@@ -1,6 +1,6 @@
 import json
-import random
 import time
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database.session import SessionLocal, get_db
 from app.plans.whatsapp import plan_whatsapp_service
+from app.tarot.persistence_service import reading_persistence_service
 from app.whatsapp.config import get_whatsapp_settings
 from app.whatsapp.i18n import normalize_language, t
 from app.whatsapp.rating import reading_rating_whatsapp_service
@@ -26,8 +27,6 @@ from app.whatsapp.webhook import (
 router = APIRouter(prefix="/api/whatsapp", tags=["WhatsApp"])
 
 CARD_SEND_INTERVAL_SECONDS = 3
-ANALYSIS_DELAY_MIN_SECONDS = 8 * 60
-ANALYSIS_DELAY_MAX_SECONDS = 22 * 60
 AFTER_OVERALL_NARRATIVE_SECONDS = 10.0
 FINAL_SYNTHESIS_DELAY_SECONDS = 20.0
 NARRATIVE_CAPTION_MAX_CHARS = 700
@@ -294,7 +293,16 @@ def _dispatch_outgoing(*, db: Session, to: str, messages: list[str | dict]) -> N
             continue
 
         if isinstance(message, dict) and message.get("type") == "deferred_tarot_analysis":
-            time.sleep(random.randint(ANALYSIS_DELAY_MIN_SECONDS, ANALYSIS_DELAY_MAX_SECONDS))
+            reading = reading_persistence_service.get(db, int(message["reading_id"]))
+            scheduled_at = reading.scheduled_analysis_at
+            if scheduled_at is not None:
+                if scheduled_at.tzinfo is None:
+                    scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+                remaining_seconds = max(
+                    0.0,
+                    (scheduled_at - datetime.now(timezone.utc)).total_seconds(),
+                )
+                time.sleep(remaining_seconds)
             follow_up = ritual_whatsapp_conversation_service.complete_analysis(
                 db=db,
                 from_number=to,
