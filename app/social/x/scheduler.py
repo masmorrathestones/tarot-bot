@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy import exists, or_, select
@@ -10,6 +11,7 @@ from app.social.x.campaign_loader import import_latest_campaign
 from app.social.x.client import x_client
 from app.social.x.config import get_x_settings
 from app.social.x.models import ScheduledXPostEntity
+from app.social.x.prospecting import discover_x_opportunities
 
 
 async def x_scheduler_loop() -> None:
@@ -22,11 +24,22 @@ async def x_scheduler_loop() -> None:
     except Exception:
         pass
 
+    next_prospecting_at = 0.0
+
     while True:
         try:
             await asyncio.to_thread(process_due_x_posts)
         except Exception:
             pass
+
+        now_monotonic = time.monotonic()
+        if settings.prospecting_enabled and now_monotonic >= next_prospecting_at:
+            next_prospecting_at = now_monotonic + settings.prospecting_interval_seconds
+            try:
+                await asyncio.to_thread(discover_x_opportunities)
+            except Exception:
+                pass
+
         await asyncio.sleep(settings.scheduler_interval_seconds)
 
 
