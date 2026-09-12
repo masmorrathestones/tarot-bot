@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.tarot.persistence_service import ReadingNotFoundError, reading_persistence_service
+from app.past_life.service import reconstruct_cards
+from app.persistence.models import PastLifeReadingEntity
 from app.whatsapp.tarot_media import (
     card_back_asset_path,
     render_card_jpeg,
@@ -25,6 +27,21 @@ def get_tarot_card_image(
         content = render_card_jpeg(card_code, reversed)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail="Tarot card image is not available.") from exc
+    return StreamingResponse(BytesIO(content), media_type="image/jpeg")
+
+
+@router.get("/past-life/{reading_id}/{draw_number}.jpg")
+def get_past_life_spread_image(reading_id: int, draw_number: int, db: Session = Depends(get_db)):
+    reading = db.get(PastLifeReadingEntity, reading_id)
+    if reading is None or draw_number not in {1, 2}:
+        raise HTTPException(status_code=404, detail="Past Life Tarot spread not found.")
+    data = reading.personality_cards if draw_number == 1 else reading.second_cards
+    if not data:
+        raise HTTPException(status_code=404, detail="Past Life Tarot spread is not available.")
+    try:
+        content = render_spread_jpeg(reconstruct_cards(data))
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail="Past Life Tarot spread could not be rendered.") from exc
     return StreamingResponse(BytesIO(content), media_type="image/jpeg")
 
 
