@@ -29,6 +29,18 @@ class UserRelevantInformationEntity(Base):
 
 
 class RelevantInformationService:
+    def add_many(self, db: Session, *, user_id: int, texts: list[str]) -> list[str]:
+        existing = list(db.scalars(select(UserRelevantInformationEntity).where(UserRelevantInformationEntity.user_id == user_id)))
+        known = {row.text.casefold() for row in existing}
+        saved: list[str] = []
+        for raw in texts[:5]:
+            value = " ".join(str(raw).split()).strip()[:240]
+            if value and value.casefold() not in known:
+                db.add(UserRelevantInformationEntity(user_id=user_id, text=value, selected_for_next_reading=False))
+                known.add(value.casefold())
+                saved.append(value)
+        return saved
+
     def list_for_whatsapp(self, db: Session, whatsapp_number: str) -> tuple[int | None, list[UserRelevantInformationEntity]]:
         user = db.scalar(select(UserEntity).where(UserEntity.whatsapp_number == whatsapp_number))
         if user is None:
