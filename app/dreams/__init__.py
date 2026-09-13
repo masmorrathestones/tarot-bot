@@ -1,5 +1,5 @@
 """Dream interpretation knowledge and persistence."""
 
-from app.dreams.models import DreamSymbolEntity
+from app.dreams.models import DreamInterpretationEntity, DreamSymbolEntity
 
-__all__ = ["DreamSymbolEntity"]
+__all__ = ["DreamInterpretationEntity", "DreamSymbolEntity"]
