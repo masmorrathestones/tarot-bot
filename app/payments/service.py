@@ -342,6 +342,8 @@ class TarotPaymentService:
         stripe.api_key = settings.stripe_secret_key
         if purpose == "past_life_reading":
             product_name = {"pt": "Tarô de Vidas Passadas", "es": "Tarot de Vidas Pasadas"}.get(language, "Past Life Tarot")
+        elif purpose == "dream_interpretation":
+            product_name = {"pt": "Interpretação de Sonhos", "es": "Interpretación de Sueños"}.get(language, "Dream Interpretation")
         else:
             product_name = {"pt": "Leitura de Tarô", "es": "Lectura de Tarot"}.get(language, "Tarot reading")
 
