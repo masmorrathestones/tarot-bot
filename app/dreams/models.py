@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -46,3 +46,24 @@ class DreamSymbolEntity(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class DreamInterpretationEntity(Base):
+    __tablename__ = "dream_interpretations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("whatsapp_conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    payment_id: Mapped[int | None] = mapped_column(ForeignKey("tarot_payments.id", ondelete="SET NULL"), index=True)
+    language: Mapped[str] = mapped_column(String(5), nullable=False, default="pt")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    dream_text: Mapped[str] = mapped_column(Text, nullable=False)
+    linguistic_analogies: Mapped[list | None] = mapped_column(JSON)
+    contextual_questions: Mapped[list | None] = mapped_column(JSON)
+    answers: Mapped[list | None] = mapped_column(JSON)
+    current_question_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    relevant_facts: Mapped[list | None] = mapped_column(JSON)
+    matched_symbols: Mapped[list | None] = mapped_column(JSON)
+    final_analysis: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
