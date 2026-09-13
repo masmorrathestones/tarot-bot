@@ -180,9 +180,9 @@ def start_checkout_in_currency(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     conversation = db.get(WhatsAppConversationEntity, payment.conversation_id)
-    if conversation is not None and conversation.state in {"RITUAL_AWAITING_PAYMENT", "PAST_LIFE_AWAITING_PAYMENT"}:
+    if conversation is not None and conversation.state in {"RITUAL_AWAITING_PAYMENT", "PAST_LIFE_AWAITING_PAYMENT", "DREAM_AWAITING_PAYMENT"}:
         flow = whatsapp_tarot_flow_store.get(db, conversation.id)
-        key = "past_life_payment_session_id" if payment.purpose == "past_life_reading" else "payment_session_id"
+        key = {"past_life_reading": "past_life_payment_session_id", "dream_interpretation": "dream_payment_session_id"}.get(payment.purpose, "payment_session_id")
         flow[key] = payment.provider_session_id
         flow["payment_url"] = payment.checkout_url
         flow["payment_currency"] = payment.currency
@@ -207,7 +207,11 @@ def admin_payment_bypass(
 
     language = _payment_language(db, payment.conversation_id)
     if changed:
-        if payment.purpose == "past_life_reading":
+        if payment.purpose == "dream_interpretation":
+            from app.dreams.service import dream_conversation_service
+            to_number, messages = dream_conversation_service.resume_after_payment(
+                db=db, conversation_id=payment.conversation_id, provider_session_id=payment.provider_session_id)
+        elif payment.purpose == "past_life_reading":
             from app.past_life.service import past_life_conversation_service
             to_number, messages = past_life_conversation_service.resume_after_payment(
                 db=db, conversation_id=payment.conversation_id, provider_session_id=payment.provider_session_id)
@@ -271,7 +275,11 @@ async def stripe_webhook(
         if payment is None or not changed:
             return {"status": "already_processed"}
 
-        if payment.purpose == "past_life_reading":
+        if payment.purpose == "dream_interpretation":
+            from app.dreams.service import dream_conversation_service
+            to_number, messages = dream_conversation_service.resume_after_payment(
+                db=db, conversation_id=payment.conversation_id, provider_session_id=session_id)
+        elif payment.purpose == "past_life_reading":
             from app.past_life.service import past_life_conversation_service
             to_number, messages = past_life_conversation_service.resume_after_payment(
                 db=db, conversation_id=payment.conversation_id, provider_session_id=session_id)
@@ -292,7 +300,11 @@ async def stripe_webhook(
         if payment is None or not changed:
             return {"status": "already_processed"}
 
-        if payment.purpose == "past_life_reading":
+        if payment.purpose == "dream_interpretation":
+            from app.dreams.service import dream_conversation_service
+            to_number, messages = dream_conversation_service.cancel_unpaid_payment(
+                db=db, conversation_id=payment.conversation_id, provider_session_id=session_id)
+        elif payment.purpose == "past_life_reading":
             from app.past_life.service import past_life_conversation_service
             to_number, messages = past_life_conversation_service.cancel_unpaid_payment(
                 db=db, conversation_id=payment.conversation_id, provider_session_id=session_id)

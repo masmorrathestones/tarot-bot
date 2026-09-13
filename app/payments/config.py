@@ -11,6 +11,8 @@ class PaymentSettings:
     brl_amount_cents: int = 600
     past_life_usd_amount_cents: int = 200
     past_life_brl_amount_cents: int = 1200
+    dream_usd_amount_cents: int = 300
+    dream_brl_amount_cents: int = 1800
     checkout_expiration_minutes: int = 31
 
     def amount_for_currency(self, currency: str, purpose: str = "tarot_reading") -> int:
@@ -20,6 +22,11 @@ class PaymentSettings:
                 return self.past_life_usd_amount_cents
             if normalized == "brl":
                 return self.past_life_brl_amount_cents
+        if purpose == "dream_interpretation":
+            if normalized == "usd":
+                return self.dream_usd_amount_cents
+            if normalized == "brl":
+                return self.dream_brl_amount_cents
         if normalized == "usd":
             return self.usd_amount_cents
         if normalized == "brl":
@@ -39,4 +46,6 @@ def get_payment_settings() -> PaymentSettings:
         brl_amount_cents=int(os.getenv("TAROT_PRICE_BRL_CENTS", "600")),
         past_life_usd_amount_cents=int(os.getenv("PAST_LIFE_PRICE_USD_CENTS", "200")),
         past_life_brl_amount_cents=int(os.getenv("PAST_LIFE_PRICE_BRL_CENTS", "1200")),
+        dream_usd_amount_cents=int(os.getenv("DREAM_PRICE_USD_CENTS", "300")),
+        dream_brl_amount_cents=int(os.getenv("DREAM_PRICE_BRL_CENTS", "1800")),
     )
