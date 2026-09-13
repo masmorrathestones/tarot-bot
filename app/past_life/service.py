@@ -55,7 +55,7 @@ class PastLifeConversationService:
         if conversation.state in STATES and command in CANCEL:
             tarot_payment_service.cancel_pending_for_conversation(db=db, conversation_id=conversation.id)
             self._reset(db, conversation)
-            return [_pick(language, "Past Life Tarot canceled.", "Tarô de Vidas Passadas cancelado.", "Tarot de Vidas Pasadas cancelado."), t(language, "main_menu")]
+            return [_pick(language, "↩️ *Past Life Tarot canceled.*", "↩️ *Tarô de Vidas Passadas cancelado.*", "↩️ *Tarot de Vidas Pasadas cancelado.*"), t(language, "main_menu")]
 
         if command in COMMANDS:
             if conversation.state in STATES:
@@ -77,15 +77,15 @@ class PastLifeConversationService:
             db.commit()
             intro = _pick(
                 language,
-                "🕯️ *Past Life Tarot* uses two separate six-card spreads: personality and identity. Price: US$2 / R$12.",
-                "🕯️ *Tarô de Vidas Passadas* utiliza duas tiragens separadas de seis cartas: personalidade e identidade. Valor: US$ 2 / R$ 12.",
-                "🕯️ *Tarot de Vidas Pasadas* utiliza dos tiradas separadas de seis cartas: personalidad e identidad. Precio: US$2 / R$12.",
+                "🕯️ *PAST LIFE TAROT*\n\n🃏 Two spreads · *6 cards each*\n1️⃣ Past-life personality\n2️⃣ Past-life identity\n\n💰 Price: *US$2 / R$12*",
+                "🕯️ *TARÔ DE VIDAS PASSADAS*\n\n🃏 Duas tiragens · *6 cartas cada*\n1️⃣ Personalidade da vida passada\n2️⃣ Identidade da vida passada\n\n💰 Valor: *US$ 2 / R$ 12*",
+                "🕯️ *TAROT DE VIDAS PASADAS*\n\n🃏 Dos tiradas · *6 cartas cada una*\n1️⃣ Personalidad de la vida pasada\n2️⃣ Identidad de la vida pasada\n\n💰 Precio: *US$2 / R$12*",
             )
             payment_message = _pick(
                 language,
-                f"💳 Open the link and choose US$2 or R$12 to continue:\n\n{payment.checkout_url}",
-                f"💳 Abra o link e escolha US$ 2 ou R$ 12 para continuar:\n\n{payment.checkout_url}",
-                f"💳 Abre el enlace y elige US$2 o R$12 para continuar:\n\n{payment.checkout_url}",
+                f"💳 *Continue to payment*\n\nChoose *US$2 or R$12*:\n{payment.checkout_url}\n\n🔒 _The meditation begins after confirmation._",
+                f"💳 *Continue para o pagamento*\n\nEscolha *US$ 2 ou R$ 12*:\n{payment.checkout_url}\n\n🔒 _A meditação começa após a confirmação._",
+                f"💳 *Continúa al pago*\n\nElige *US$2 o R$12*:\n{payment.checkout_url}\n\n🔒 _La meditación comienza tras la confirmación._",
             )
             return [intro, payment_message]
 
@@ -108,17 +108,17 @@ class PastLifeConversationService:
             if elapsed < MIN_MEDITATION_SECONDS:
                 remaining = max(1, int((MIN_MEDITATION_SECONDS - elapsed + 59) // 60))
                 return [_pick(language,
-                    f"Stay with the meditation a little longer — at least {remaining} more minute(s). Let the question occupy your attention and send READY again afterward.",
-                    f"Permaneça na meditação mais um pouco — pelo menos mais {remaining} minuto(s). Deixe a questão ocupar sua atenção e depois envie PRONTO novamente.",
-                    f"Permanece en la meditación un poco más — al menos {remaining} minuto(s). Deja que la cuestión ocupe tu atención y luego envía LISTO nuevamente.")]
+                    f"⏳ *Stay with the meditation a little longer*\n\nTake at least *{remaining} more minute(s)*. Let the question hold your attention and send *READY* again afterward.",
+                    f"⏳ *Permaneça na meditação mais um pouco*\n\nDedique pelo menos mais *{remaining} minuto(s)*. Deixe a questão ocupar sua atenção e depois envie *PRONTO* novamente.",
+                    f"⏳ *Permanece en la meditación un poco más*\n\nDedica al menos *{remaining} minuto(s) más*. Deja que la cuestión ocupe tu atención y luego envía *LISTO* nuevamente.")]
             reading.meditation_completed_at = datetime.now(timezone.utc)
             reading.status = "AWAITING_WORD"
             conversation.state = "PAST_LIFE_AWAITING_WORD"
             db.commit()
             return [_pick(language,
-                "Without overthinking, send the first word connected to your meditation that comes to mind — preferably a noun.",
-                "Sem pensar demais, envie a primeira palavra relacionada à sua meditação que vier à mente — de preferência, um substantivo.",
-                "Sin pensarlo demasiado, envía la primera palabra relacionada con tu meditación que te venga a la mente — preferiblemente un sustantivo.")]
+                "💭 *Your intuitive word*\n\nWithout overthinking, send the *first word* connected to your meditation that comes to mind.\n\n_Preferably a noun._",
+                "💭 *Sua palavra intuitiva*\n\nSem pensar demais, envie a *primeira palavra* relacionada à meditação que vier à mente.\n\n_De preferência, um substantivo._",
+                "💭 *Tu palabra intuitiva*\n\nSin pensarlo demasiado, envía la *primera palabra* relacionada con la meditación que te venga a la mente.\n\n_Preferiblemente un sustantivo._")]
 
         if conversation.state == "PAST_LIFE_AWAITING_WORD":
             try:
@@ -151,14 +151,14 @@ class PastLifeConversationService:
             conversation.state = "PAST_LIFE_AWAITING_THEME_CONFIRMATION"
             db.commit()
             return [
-                {"type": "image", "url": spread_url(reading.id, 1), "caption": _pick(language, "*First spread — Past-life personality*", "*Primeira tiragem — Personalidade da vida passada*", "*Primera tirada — Personalidad de la vida pasada*")},
+                {"type": "image", "url": spread_url(reading.id, 1), "caption": _pick(language, "🃏 *FIRST SPREAD*\n_Past-life personality_", "🃏 *PRIMEIRA TIRAGEM*\n_Personalidade da vida passada_", "🃏 *PRIMERA TIRADA*\n_Personalidad de la vida pasada_")},
                 analysis,
-                f"🔮 {reading.intuitive_question}\n\n" + _pick(language, "Reply YES or NO.", "Responda SIM ou NÃO.", "Responde SÍ o NO."),
+                f"🔮 *Intuitive question*\n\n{reading.intuitive_question}\n\n" + _pick(language, "💬 Reply *YES* or *NO*.", "💬 Responda *SIM* ou *NÃO*.", "💬 Responde *SÍ* o *NO*."),
             ]
 
         if conversation.state == "PAST_LIFE_AWAITING_THEME_CONFIRMATION":
             if command not in YES | NO:
-                return [f"🔮 {reading.intuitive_question}\n\n" + _pick(language, "Reply YES or NO.", "Responda SIM ou NÃO.", "Responde SÍ o NO.")]
+                return [f"🔮 *Intuitive question*\n\n{reading.intuitive_question}\n\n" + _pick(language, "💬 Reply *YES* or *NO*.", "💬 Responda *SIM* ou *NÃO*.", "💬 Responde *SÍ* o *NO*.")]
             confirmed = command in YES
             reading.intuitive_answer = confirmed
             if not confirmed:
@@ -186,9 +186,9 @@ class PastLifeConversationService:
             conversation.state = "PAST_LIFE_AWAITING_HELPFULNESS"
             db.commit()
             return [
-                {"type": "image", "url": spread_url(reading.id, 2), "caption": _pick(language, "*Second spread — Past-life identity*", "*Segunda tiragem — Identidade da vida passada*", "*Segunda tirada — Identidad de la vida pasada*")},
+                {"type": "image", "url": spread_url(reading.id, 2), "caption": _pick(language, "🃏 *SECOND SPREAD*\n_Past-life identity_", "🃏 *SEGUNDA TIRAGEM*\n_Identidade da vida passada_", "🃏 *SEGUNDA TIRADA*\n_Identidad de la vida pasada_")},
                 final,
-                _pick(language, "Did this Past Life Tarot reading help you resolve or better understand your question? Reply YES or NO.", "Esta tiragem de Vidas Passadas ajudou você a sanar ou compreender melhor a sua questão? Responda SIM ou NÃO.", "¿Esta tirada de Vidas Pasadas te ayudó a resolver o comprender mejor tu cuestión? Responde SÍ o NO."),
+                _pick(language, "✨ *Did this reading help?*\n\nDid it help you resolve or better understand your question?\n\n💬 Reply *YES* or *NO*.", "✨ *Esta tiragem ajudou?*\n\nEla ajudou você a sanar ou compreender melhor a sua questão?\n\n💬 Responda *SIM* ou *NÃO*.", "✨ *¿Esta tirada te ayudó?*\n\n¿Te ayudó a resolver o comprender mejor tu cuestión?\n\n💬 Responde *SÍ* o *NO*."),
             ]
 
         if conversation.state == "PAST_LIFE_AWAITING_HELPFULNESS":
@@ -197,7 +197,7 @@ class PastLifeConversationService:
             reading.status = "COMPLETED"
             reading.completed_at = datetime.now(timezone.utc)
             self._reset(db, conversation)
-            return [_pick(language, "Thank you. Your answer was saved. ✨", "Obrigado. Sua resposta foi salva. ✨", "Gracias. Tu respuesta fue guardada. ✨"), t(language, "main_menu")]
+            return [_pick(language, "✨ *Thank you!* Your answer was saved.", "✨ *Obrigado!* Sua resposta foi salva.", "✨ *¡Gracias!* Tu respuesta fue guardada."), t(language, "main_menu")]
 
         return [t(language, "main_menu")]
 
@@ -250,9 +250,9 @@ class PastLifeConversationService:
     @staticmethod
     def _meditation_prompt(language: str) -> str:
         return _pick(language,
-            "🧘 Set aside everything else. Decide what you want to know about a past life—an unresolved issue, a profession, a place, or another specific concern. Reflect on why it matters and hold only that question in mind for at least two minutes. Send READY only when you feel the meditation is complete.",
-            "🧘 Deixe todo o resto de lado. Decida o que deseja saber sobre uma vida passada — uma questão mal resolvida, profissão, lugar ou outra inquietação específica. Reflita por que isso é relevante e mantenha apenas essa questão na mente por pelo menos dois minutos. Envie PRONTO somente quando sentir que concluiu a meditação.",
-            "🧘 Deja todo lo demás a un lado. Decide qué deseas saber sobre una vida pasada — una cuestión no resuelta, profesión, lugar u otra inquietud específica. Reflexiona por qué es relevante y mantén solo esa cuestión en mente durante al menos dos minutos. Envía LISTO solamente cuando termines.")
+            "🧘 *MEDITATION — AT LEAST 2 MINUTES*\n\n1️⃣ Decide what you want to know about a past life.\n2️⃣ Reflect on why this question matters to you.\n3️⃣ Set everything else aside and hold only that question in mind.\n\nYour focus may be an unresolved issue, a profession, a place or another specific concern.\n\n💬 Send *READY* only when your meditation feels complete.",
+            "🧘 *MEDITAÇÃO — PELO MENOS 2 MINUTOS*\n\n1️⃣ Decida o que deseja saber sobre uma vida passada.\n2️⃣ Reflita por que essa questão é relevante para você.\n3️⃣ Deixe todo o resto de lado e mantenha apenas essa questão na mente.\n\nSeu foco pode ser uma questão mal resolvida, profissão, lugar ou outra inquietação específica.\n\n💬 Envie *PRONTO* somente quando sentir que concluiu a meditação.",
+            "🧘 *MEDITACIÓN — AL MENOS 2 MINUTOS*\n\n1️⃣ Decide qué deseas saber sobre una vida pasada.\n2️⃣ Reflexiona por qué esa cuestión es relevante para ti.\n3️⃣ Deja todo lo demás a un lado y mantén solo esa cuestión en mente.\n\nTu enfoque puede ser una cuestión no resuelta, profesión, lugar u otra inquietud específica.\n\n💬 Envía *LISTO* solamente cuando termines la meditación.")
 
     @staticmethod
     def _reset(db: Session, conversation) -> None:

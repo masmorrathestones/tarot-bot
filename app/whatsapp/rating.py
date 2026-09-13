@@ -43,7 +43,7 @@ class ReadingRatingWhatsAppService:
         if conversation.state.startswith("RATING_") and command in CANCEL_COMMANDS:
             conversation.state = "AWAITING_QUESTION"
             db.commit()
-            return [_pick(language, "Rating canceled.", "Avaliação cancelada.", "Calificación cancelada."), t(language, "main_menu")]
+            return [_pick(language, "↩️ *Rating canceled.*", "↩️ *Avaliação cancelada.*", "↩️ *Calificación cancelada.*"), t(language, "main_menu")]
 
         if command in RATING_COMMANDS and not conversation.state.startswith("RATING_"):
             readings = self._recent_readings(db, user.id)
@@ -51,10 +51,11 @@ class ReadingRatingWhatsAppService:
                 return [_pick(language, "You do not have a completed reading to rate yet.", "Você ainda não tem uma tiragem concluída para avaliar.", "Todavía no tienes una tirada completada para calificar."), t(language, "main_menu")]
             conversation.state = "RATING_PICK"
             db.commit()
-            lines = [_pick(language, "⭐ Which reading would you like to rate? Reply with the number:", "⭐ Qual tiragem você quer avaliar? Responda com o número:", "⭐ ¿Qué tirada quieres calificar? Responde con el número:")]
+            lines = [_pick(language, "⭐ *RATE A READING*\n_Which one would you like to rate?_\n", "⭐ *AVALIE UMA TIRAGEM*\n_Qual delas você deseja avaliar?_\n", "⭐ *CALIFICA UNA TIRADA*\n_¿Cuál deseas calificar?_\n")]
             for index, reading in enumerate(readings, start=1):
                 question = " ".join((reading.question or "").split())
-                lines.append(f"{index} — {question[:107] + '...' if len(question) > 110 else question}")
+                lines.append(f"*{index}* — {question[:107] + '...' if len(question) > 110 else question}")
+            lines.append(_pick(language, "\n💬 Send the *reading number*.", "\n💬 Envie o *número da tiragem*.", "\n💬 Envía el *número de la tirada*."))
             return ["\n".join(lines)]
 
         if conversation.state == "RATING_PICK":
@@ -68,7 +69,7 @@ class ReadingRatingWhatsAppService:
             reading = readings[choice - 1]
             conversation.state = f"RATING_STARS_{reading.id}"
             db.commit()
-            return [_pick(language, "How many stars? Reply from 1 to 5. ⭐", "Quantas estrelas? Responda de 1 a 5. ⭐", "¿Cuántas estrellas? Responde del 1 al 5. ⭐")]
+            return [_pick(language, "⭐ *How was your reading?*\n\nSend a score from *1 to 5*.", "⭐ *Como foi sua tiragem?*\n\nEnvie uma nota de *1 a 5*.", "⭐ *¿Cómo fue tu tirada?*\n\nEnvía una puntuación del *1 al 5*.")]
 
         if conversation.state.startswith("RATING_STARS_"):
             reading_id = self._reading_id(conversation.state, "RATING_STARS_")
@@ -82,7 +83,7 @@ class ReadingRatingWhatsAppService:
                 return [_pick(language, "Send a number from 1 to 5.", "Envie um número de 1 a 5.", "Envía un número del 1 al 5.")]
             conversation.state = f"RATING_NOTE_{reading_id}_{stars}"
             db.commit()
-            return [_pick(language, "Leave an observation, or reply SKIP.", "Deixe uma observação, ou responda PULAR.", "Deja una observación, o responde OMITIR.")]
+            return [_pick(language, "💭 *Would you like to add a comment?*\n\nWrite your observation or send *SKIP*.", "💭 *Deseja acrescentar um comentário?*\n\nEscreva sua observação ou envie *PULAR*.", "💭 *¿Deseas añadir un comentario?*\n\nEscribe tu observación o envía *OMITIR*.")]
 
         if conversation.state.startswith("RATING_NOTE_"):
             parsed = self._note_state(conversation.state)
@@ -102,7 +103,7 @@ class ReadingRatingWhatsAppService:
                 rating.note = note
             conversation.state = "AWAITING_QUESTION"
             db.commit()
-            return [_pick(language, f"Thanks for your {stars}-star rating! ✨", f"Obrigado pela avaliação de {stars} estrela(s)! ✨", f"¡Gracias por tu calificación de {stars} estrella(s)! ✨"), t(language, "main_menu")]
+            return [_pick(language, f"✨ *Thank you!* Your {stars}-star rating was saved.", f"✨ *Obrigado!* Sua avaliação de {stars} estrela(s) foi salva.", f"✨ *¡Gracias!* Tu calificación de {stars} estrella(s) fue guardada."), t(language, "main_menu")]
 
         return None
 

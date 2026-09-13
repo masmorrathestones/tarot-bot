@@ -413,53 +413,53 @@ class PlanWhatsAppService:
     def _plan_info(language: str) -> str:
         return _with_cancel(language, _pick(
             language,
-            "🌙 *Daily Tarot + Weekly Astrology*\n\nWith this plan you choose a time to receive one Tarot card every day, with a focused interpretation for that day: advice, cautions, opportunities and practical suggestions. You also choose one weekday and time to receive a full astrological outlook for the next seven days, crossing your natal chart with current transits and your current location.\n\nFor weekly astrology you must complete PROFILE with date of birth, exact birth time and birthplace. You must also keep your *current location* updated whenever you travel or move; location and timezone affect the weekly calculation and delivery times.\n\nRecurring: US$10/month or R$60/month.\nOne-month, no renewal: US$11 or R$66.\n\n1 — Configure and subscribe\n2 — Back",
-            "🌙 *Tarô Diário + Astrologia Semanal*\n\nCom este plano você escolhe um horário para receber uma carta de Tarô todos os dias, com uma interpretação focada naquele dia: conselhos, avisos, oportunidades e sugestões práticas. Você também escolhe um dia da semana e horário para receber uma análise astrológica ampla dos próximos sete dias, cruzando seu mapa natal com os trânsitos atuais e seu local atual.\n\nPara a astrologia semanal, é necessário completar o PERFIL com data de nascimento, hora exata e local de nascimento. Você também deve manter o *local atual* sempre atualizado quando viajar ou mudar de cidade; local e fuso influenciam o cálculo semanal e os horários de envio.\n\nRecorrente: US$10/mês ou R$60/mês.\nAvulso por um mês, sem renovação: US$11 ou R$66.\n\n1 — Configurar e contratar\n2 — Voltar",
-            "🌙 *Tarot Diario + Astrología Semanal*\n\nCon este plan eliges una hora para recibir una carta de Tarot cada día, con interpretación enfocada en ese día: consejos, advertencias, oportunidades y sugerencias prácticas. También eliges un día y hora semanal para recibir un análisis astrológico amplio de los próximos siete días, cruzando tu carta natal con los tránsitos actuales y tu ubicación actual.\n\nPara la astrología semanal debes completar PERFIL con fecha de nacimiento, hora exacta y lugar de nacimiento. Mantén también tu *ubicación actual* actualizada cuando viajes o te mudes; la ubicación y zona horaria afectan el cálculo semanal y los horarios de envío.\n\nRecurrente: US$10/mes o R$60/mes.\nUn mes sin renovación: US$11 o R$66.\n\n1 — Configurar y contratar\n2 — Volver",
+            "🌙 *DAILY TAROT + WEEKLY ASTROLOGY*\n\n🃏 *Every day*\nOne card with advice, cautions, opportunities and practical suggestions.\n\n🪐 *Every week*\nA seven-day outlook combining your natal chart, current transits and location.\n\n🧿 _Weekly astrology requires a complete profile and an up-to-date current location._\n\n💳 *Choose your plan*\n• Recurring: *US$10 / R$60 per month*\n• One month, no renewal: *US$11 / R$66*\n\n1️⃣ *Configure and subscribe*\n2️⃣ *Back*",
+            "🌙 *TARÔ DIÁRIO + ASTROLOGIA SEMANAL*\n\n🃏 *Todos os dias*\nUma carta com conselhos, alertas, oportunidades e sugestões práticas.\n\n🪐 *Toda semana*\nUma visão dos próximos sete dias combinando seu mapa natal, trânsitos atuais e localização.\n\n🧿 _A astrologia semanal exige o perfil completo e o local atual sempre atualizado._\n\n💳 *Escolha seu plano*\n• Recorrente: *US$ 10 / R$ 60 por mês*\n• Um mês, sem renovação: *US$ 11 / R$ 66*\n\n1️⃣ *Configurar e contratar*\n2️⃣ *Voltar*",
+            "🌙 *TAROT DIARIO + ASTROLOGÍA SEMANAL*\n\n🃏 *Todos los días*\nUna carta con consejos, alertas, oportunidades y sugerencias prácticas.\n\n🪐 *Cada semana*\nUna visión de los próximos siete días combinando tu carta natal, tránsitos actuales y ubicación.\n\n🧿 _La astrología semanal requiere el perfil completo y la ubicación actual siempre actualizada._\n\n💳 *Elige tu plan*\n• Recurrente: *US$10 / R$60 al mes*\n• Un mes, sin renovación: *US$11 / R$66*\n\n1️⃣ *Configurar y contratar*\n2️⃣ *Volver*",
         ))
 
     @staticmethod
     def _daily_time_prompt(language: str) -> str:
         return _with_cancel(language, _pick(language,
-            "What time would you like to receive your daily Tarot card? Send HH:MM, for example 08:30.",
-            "Que horas você quer receber sua carta diária de Tarô? Envie HH:MM, por exemplo 08:30.",
-            "¿A qué hora quieres recibir tu carta diaria de Tarot? Envía HH:MM, por ejemplo 08:30."))
+            "🕐 *Daily Tarot time*\n\nWhat time would you like to receive your card?\n💬 Send it as *HH:MM* — for example, _08:30_.",
+            "🕐 *Horário do Tarô diário*\n\nQue horas você quer receber sua carta?\n💬 Envie no formato *HH:MM* — por exemplo, _08:30_.",
+            "🕐 *Hora del Tarot diario*\n\n¿A qué hora quieres recibir tu carta?\n💬 Envíala como *HH:MM* — por ejemplo, _08:30_."))
 
     @staticmethod
     def _weekly_day_prompt(language: str) -> str:
         return _with_cancel(language, _pick(language,
-            "Choose the weekday for your weekly astrology analysis:\n1 Monday\n2 Tuesday\n3 Wednesday\n4 Thursday\n5 Friday\n6 Saturday\n7 Sunday",
-            "Escolha o dia da análise astrológica semanal:\n1 Segunda\n2 Terça\n3 Quarta\n4 Quinta\n5 Sexta\n6 Sábado\n7 Domingo",
-            "Elige el día del análisis astrológico semanal:\n1 Lunes\n2 Martes\n3 Miércoles\n4 Jueves\n5 Viernes\n6 Sábado\n7 Domingo"))
+            "📅 *Weekly astrology day*\n\n1️⃣ Monday\n2️⃣ Tuesday\n3️⃣ Wednesday\n4️⃣ Thursday\n5️⃣ Friday\n6️⃣ Saturday\n7️⃣ Sunday\n\n💬 Send a number from *1 to 7*.",
+            "📅 *Dia da astrologia semanal*\n\n1️⃣ Segunda\n2️⃣ Terça\n3️⃣ Quarta\n4️⃣ Quinta\n5️⃣ Sexta\n6️⃣ Sábado\n7️⃣ Domingo\n\n💬 Envie um número de *1 a 7*.",
+            "📅 *Día de la astrología semanal*\n\n1️⃣ Lunes\n2️⃣ Martes\n3️⃣ Miércoles\n4️⃣ Jueves\n5️⃣ Viernes\n6️⃣ Sábado\n7️⃣ Domingo\n\n💬 Envía un número del *1 al 7*."))
 
     @staticmethod
     def _weekly_time_prompt(language: str, weekday: int | None) -> str:
         day = WEEKDAY_NAMES[weekday] if weekday is not None and 0 <= weekday <= 6 else "selected day"
         return _with_cancel(language, _pick(language,
-            f"What time on {day} should I send the weekly analysis? Send HH:MM, for example 19:00.",
-            "Em qual horário desse dia devo enviar a análise semanal? Envie HH:MM, por exemplo 19:00.",
-            "¿A qué hora de ese día debo enviar el análisis semanal? Envía HH:MM, por ejemplo 19:00."))
+            f"🕐 *Weekly analysis time*\n\nWhat time on *{day}* should I send it?\n💬 Use *HH:MM* — for example, _19:00_.",
+            "🕐 *Horário da análise semanal*\n\nEm qual horário desse dia devo enviar?\n💬 Use *HH:MM* — por exemplo, _19:00_.",
+            "🕐 *Hora del análisis semanal*\n\n¿A qué hora de ese día debo enviarlo?\n💬 Usa *HH:MM* — por ejemplo, _19:00_."))
 
     @staticmethod
     def _billing_prompt(language: str) -> str:
         return _with_cancel(language, _pick(language,
-            "Choose payment type:\n1 — Automatic monthly renewal: US$10 / R$60 per month\n2 — One month only, no renewal: US$11 / R$66",
-            "Escolha o tipo de pagamento:\n1 — Renovação mensal automática: US$10 / R$60 por mês\n2 — Um mês avulso, sem renovação: US$11 / R$66",
-            "Elige el tipo de pago:\n1 — Renovación mensual automática: US$10 / R$60 al mes\n2 — Un mes solamente, sin renovación: US$11 / R$66"))
+            "💳 *Payment type*\n\n1️⃣ *Monthly renewal*\nUS$10 / R$60 per month\n\n2️⃣ *One month only*\nUS$11 / R$66 · _no renewal_",
+            "💳 *Tipo de pagamento*\n\n1️⃣ *Renovação mensal*\nUS$ 10 / R$ 60 por mês\n\n2️⃣ *Um mês avulso*\nUS$ 11 / R$ 66 · _sem renovação_",
+            "💳 *Tipo de pago*\n\n1️⃣ *Renovación mensual*\nUS$10 / R$60 al mes\n\n2️⃣ *Un mes solamente*\nUS$11 / R$66 · _sin renovación_"))
 
     @staticmethod
     def _current_location_prompt(language: str) -> str:
         return _with_cancel(language, _pick(language,
-            "📍 Send your current city, state/region and country. This is different from your birthplace and should be updated whenever you travel or move.",
-            "📍 Envie sua cidade atual, estado/região e país. Isso é diferente do seu local de nascimento e deve ser atualizado sempre que você viajar ou mudar de cidade.",
-            "📍 Envía tu ciudad actual, estado/región y país. Esto es diferente de tu lugar de nacimiento y debes actualizarlo cuando viajes o te mudes."))
+            "📍 *Current location*\n\nSend your *city, state/region and country*.\n\n_This is different from your birthplace. Update it whenever you travel or move._",
+            "📍 *Localização atual*\n\nEnvie sua *cidade, estado/região e país*.\n\n_Este dado é diferente do local de nascimento. Atualize-o sempre que viajar ou se mudar._",
+            "📍 *Ubicación actual*\n\nEnvía tu *ciudad, estado/región y país*.\n\n_Este dato es diferente del lugar de nacimiento. Actualízalo cuando viajes o te mudes._"))
 
     @staticmethod
     def _checkout_ready(language: str, url: str) -> str:
         return _pick(language,
-            f"✅ Your schedule is ready. Open the link below, choose USD or BRL and complete payment:\n{url}",
-            f"✅ Sua agenda está pronta. Abra o link abaixo, escolha dólar ou real e conclua o pagamento:\n{url}",
-            f"✅ Tu agenda está lista. Abre el enlace, elige USD o BRL y completa el pago:\n{url}")
+            f"✅ *Your schedule is ready!*\n\n💳 Choose *USD or BRL* and complete payment:\n{url}",
+            f"✅ *Sua agenda está pronta!*\n\n💳 Escolha *dólar ou real* e conclua o pagamento:\n{url}",
+            f"✅ *¡Tu agenda está lista!*\n\n💳 Elige *USD o BRL* y completa el pago:\n{url}")
 
     @staticmethod
     def _active_menu(language: str, plan) -> str:
@@ -468,9 +468,9 @@ class PlanWhatsAppService:
         weekly = plan.weekly_time.strftime("%H:%M") if plan.weekly_time else "?"
         renewal = "off" if plan.cancel_at_period_end or plan.billing_type == "one_time" else "on"
         return _with_cancel(language, _pick(language,
-            f"🌙 *Your plan*\nDaily Tarot: {daily}\nWeekly astrology: {weekday} at {weekly}\nAutomatic renewal: {renewal}\n\n1 — Change daily time\n2 — Change weekly day/time\n3 — Update current location\n4 — Cancel renewal",
-            f"🌙 *Seu plano*\nTarô diário: {daily}\nAstrologia semanal: {weekday} às {weekly}\nRenovação automática: {renewal}\n\n1 — Alterar horário diário\n2 — Alterar dia/horário semanal\n3 — Atualizar local atual\n4 — Cancelar renovação",
-            f"🌙 *Tu plan*\nTarot diario: {daily}\nAstrología semanal: {weekday} a las {weekly}\nRenovación automática: {renewal}\n\n1 — Cambiar hora diaria\n2 — Cambiar día/hora semanal\n3 — Actualizar ubicación actual\n4 — Cancelar renovación"))
+            f"🌙 *YOUR PLAN*\n\n🃏 Daily Tarot: *{daily}*\n🪐 Weekly astrology: *{weekday} at {weekly}*\n🔁 Automatic renewal: *{renewal}*\n\n1️⃣ Change daily time\n2️⃣ Change weekly day/time\n3️⃣ Update current location\n4️⃣ Cancel renewal",
+            f"🌙 *SEU PLANO*\n\n🃏 Tarô diário: *{daily}*\n🪐 Astrologia semanal: *{weekday} às {weekly}*\n🔁 Renovação automática: *{renewal}*\n\n1️⃣ Alterar horário diário\n2️⃣ Alterar dia/horário semanal\n3️⃣ Atualizar local atual\n4️⃣ Cancelar renovação",
+            f"🌙 *TU PLAN*\n\n🃏 Tarot diario: *{daily}*\n🪐 Astrología semanal: *{weekday} a las {weekly}*\n🔁 Renovación automática: *{renewal}*\n\n1️⃣ Cambiar hora diaria\n2️⃣ Cambiar día/hora semanal\n3️⃣ Actualizar ubicación actual\n4️⃣ Cancelar renovación"))
 
 
 plan_whatsapp_service = PlanWhatsAppService()
